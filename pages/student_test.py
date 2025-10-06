@@ -131,8 +131,17 @@ if submit_button:
                 st.write(f"{i}. {holland_type}")
         
         with col2:
-            st.write("**Rekomendasi Jurusan:**")
+            st.write("**Rekomendasi Jurusan Terbaik (ANP):**")
             st.success(result['recommended_major'])
+            
+            # Show top 3 ANP recommendations if available
+            if 'anp_results' in result and result['anp_results']:
+                st.write("**Top 3 Pilihan Lainnya:**")
+                top_majors = result['anp_results']['top_5_majors'][:3]
+                for i, (major, data) in enumerate(top_majors[1:], 2):  # Skip first as it's already shown
+                    st.write(f"{i}. {major} ({data['final_score']:.2f})")
+                    if i >= 3:  # Only show top 3 additional
+                        break
         
         # Tombol untuk melihat hasil lengkap
         if st.button("Lihat Hasil Lengkap", type="primary"):

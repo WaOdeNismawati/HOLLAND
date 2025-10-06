@@ -1,5 +1,6 @@
 import json
 from database.db_manager import DatabaseManager
+from .anp import recommend_majors
 
 class HollandCalculator:
     def __init__(self):
@@ -74,8 +75,8 @@ class HollandCalculator:
         
         return fallback_recommendations.get(primary_type, 'Manajemen Umum')
     
-    def save_test_result(self, student_id, scores, top_3_types, recommended_major):
-        """Simpan hasil tes ke database"""
+    def save_test_result(self, student_id, scores, top_3_types, recommended_major, anp_results=None):
+        """Simpan hasil tes ke database dengan data ANP"""
         db_manager = DatabaseManager()
         conn = db_manager.get_connection()
         cursor = conn.cursor()
@@ -83,25 +84,39 @@ class HollandCalculator:
         # Hapus hasil sebelumnya jika ada
         cursor.execute('DELETE FROM test_results WHERE student_id = ?', (student_id,))
         
+        # Prepare ANP data for storage
+        anp_data = json.dumps(anp_results) if anp_results else None
+        
         # Simpan hasil baru
         cursor.execute('''
-            INSERT INTO test_results (student_id, top_3_types, recommended_major, holland_scores)
-            VALUES (?, ?, ?, ?)
-        ''', (student_id, json.dumps(top_3_types), recommended_major, json.dumps(scores)))
+            INSERT INTO test_results (student_id, top_3_types, recommended_major, holland_scores, anp_results)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (student_id, json.dumps(top_3_types), recommended_major, json.dumps(scores), anp_data))
         
         conn.commit()
         conn.close()
     
     def process_test_completion(self, student_id):
-        """Proses lengkap setelah siswa menyelesaikan tes"""
+        """Proses lengkap setelah siswa menyelesaikan tes dengan ANP integration"""
         scores = self.calculate_holland_scores(student_id)
         top_3_types = self.get_top_3_types(scores)
-        recommended_major = self.recommend_major(top_3_types)
         
-        self.save_test_result(student_id, scores, top_3_types, recommended_major)
+        # Traditional recommendation (kept for compatibility)
+        traditional_major = self.recommend_major(top_3_types)
+        
+        # ANP-based recommendations
+        anp_results = recommend_majors(scores)
+        
+        # Get top ANP recommendation
+        anp_top_major = anp_results['top_5_majors'][0][0] if anp_results['top_5_majors'] else traditional_major
+        
+        # Save complete results
+        self.save_test_result(student_id, scores, top_3_types, anp_top_major, anp_results)
         
         return {
             'scores': scores,
             'top_3_types': top_3_types,
-            'recommended_major': recommended_major
+            'recommended_major': anp_top_major,
+            'traditional_major': traditional_major,
+            'anp_results': anp_results
         }

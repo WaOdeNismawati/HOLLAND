@@ -59,11 +59,19 @@ class DatabaseManager:
                 top_3_types TEXT NOT NULL,
                 recommended_major TEXT NOT NULL,
                 holland_scores TEXT NOT NULL,
+                anp_results TEXT,
                 completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (student_id) REFERENCES users (id),
                 UNIQUE(student_id)
             )
         ''')
+        
+        # Add ANP column to existing table if it doesn't exist
+        try:
+            cursor.execute('ALTER TABLE test_results ADD COLUMN anp_results TEXT')
+        except:
+            # Column already exists or other error, continue
+            pass
         
         conn.commit()
         

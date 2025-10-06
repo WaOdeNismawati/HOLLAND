@@ -34,7 +34,7 @@ cursor = conn.cursor()
 
 # Ambil hasil tes siswa
 cursor.execute('''
-    SELECT top_3_types, recommended_major, holland_scores, completed_at
+    SELECT top_3_types, recommended_major, holland_scores, anp_results, completed_at
     FROM test_results 
     WHERE student_id = ?
 ''', (st.session_state.user_id,))
@@ -56,17 +56,18 @@ if not result:
 top_3_types = json.loads(result[0])
 recommended_major = result[1]
 holland_scores = json.loads(result[2])
-completed_at = result[3]
+anp_results = json.loads(result[3]) if result[3] else None
+completed_at = result[4]
 
 # Header hasil
 st.success(f"✅ Tes diselesaikan pada: {completed_at}")
 
-# Rekomendasi utama
-st.subheader("🎯 Rekomendasi Jurusan")
+# Rekomendasi utama dengan ANP
+st.subheader("🎯 Rekomendasi Jurusan Terbaik")
 st.markdown(f"""
 <div style="background-color: #e8f5e8; padding: 20px; border-radius: 10px; border-left: 5px solid #28a745;">
     <h2 style="color: #155724; margin: 0;">🎓 {recommended_major}</h2>
-    <p style="color: #155724; margin: 5px 0 0 0;">Jurusan yang direkomendasikan berdasarkan hasil tes Anda</p>
+    <p style="color: #155724; margin: 5px 0 0 0;">Rekomendasi terbaik berdasarkan analisis ANP (Analytic Network Process)</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -126,6 +127,86 @@ for i, holland_type in enumerate(top_3_types):
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+st.markdown("---")
+
+# ANP Rankings Section
+if anp_results:
+    st.subheader("🏅 Ranking Jurusan Berdasarkan ANP")
+    st.info("📊 Analytic Network Process (ANP) menganalisis hubungan kompleks antara tipe kepribadian RIASEC dan karakteristik jurusan untuk memberikan rekomendasi yang lebih akurat.")
+    
+    # Top 5 Major Rankings Table
+    col1, col2 = st.columns([3, 2])
+    
+    with col1:
+        st.write("**📋 Top 5 Jurusan Terbaik untuk Anda:**")
+        
+        # Create ranking table
+        ranking_data = []
+        for i, (major, data) in enumerate(anp_results['top_5_majors'], 1):
+            ranking_data.append({
+                'Ranking': f"#{i}",
+                'Jurusan': major,
+                'Skor ANP': f"{data['final_score']:.3f}",
+                'Tingkat Kesesuaian': '⭐' * min(5, int(data['final_score'] * 5))
+            })
+        
+        ranking_df = pd.DataFrame(ranking_data)
+        st.table(ranking_df)
+    
+    with col2:
+        # ANP Score Bar Chart
+        if len(anp_results['top_5_majors']) > 0:
+            majors_names = [item[0] for item in anp_results['top_5_majors']]
+            anp_scores = [item[1]['final_score'] for item in anp_results['top_5_majors']]
+            
+            fig_anp = go.Figure(data=[
+                go.Bar(
+                    x=anp_scores,
+                    y=majors_names,
+                    orientation='h',
+                    marker=dict(
+                        color=anp_scores,
+                        colorscale='viridis',
+                        showscale=True,
+                        colorbar=dict(title="Skor ANP")
+                    ),
+                    text=[f"{score:.3f}" for score in anp_scores],
+                    textposition='inside'
+                )
+            ])
+            
+            fig_anp.update_layout(
+                title="Skor ANP Top 5 Jurusan",
+                xaxis_title="Skor ANP",
+                yaxis_title="Jurusan",
+                height=400,
+                margin=dict(l=100, r=50, t=50, b=50)
+            )
+            
+            st.plotly_chart(fig_anp, use_container_width=True)
+    
+    # Detailed Analysis Expander
+    with st.expander("🔍 Analisis Detail ANP", expanded=False):
+        st.write(f"**Profil RIASEC Anda (Normalized):** {anp_results['student_riasec_profile']}")
+        
+        st.write("**Penjelasan Metodologi ANP:**")
+        st.write("""
+        - **Supermatrix:** Matriks yang menggambarkan hubungan antara kriteria RIASEC dan alternatif jurusan
+        - **Limit Matrix:** Hasil iterasi untuk mendapatkan prioritas stabil
+        - **Final Score:** Kombinasi dari alignment RIASEC (70%) dan prioritas ANP (30%)
+        """)
+        
+        # Show detailed scores for top major
+        top_major = anp_results['top_5_majors'][0]
+        st.write(f"**Detail Analisis untuk '{top_major[0]}':**")
+        alignment_data = top_major[1]['riasec_alignment']
+        
+        alignment_df = pd.DataFrame([
+            {'Tipe RIASEC': k, 'Persyaratan Jurusan': v, 'Skor Anda': anp_results['student_riasec_profile'].get(k, 0)} 
+            for k, v in alignment_data.items()
+        ])
+        st.dataframe(alignment_df, use_container_width=True)
 
 st.markdown("---")
 
@@ -195,20 +276,41 @@ with st.expander("Penjelasan Tipe Kepribadian Anda", expanded=True):
         st.write(f"{i}. **{desc['icon']} {desc['title']}:** {desc['desc']}")
 
 with st.expander("Saran Pengembangan Karier"):
-    st.write(f"""
-    Berdasarkan hasil tes Anda, berikut adalah beberapa saran:
-    
-    **🎓 Jurusan yang Direkomendasikan:** {recommended_major}
-    
-    **💼 Bidang Karier yang Cocok:**
-    - Bidang yang melibatkan karakteristik {top_3_types[0].lower()}
-    - Pekerjaan yang memadukan aspek {top_3_types[1].lower()} dan {top_3_types[2].lower()}
-    
-    **🚀 Tips Pengembangan:**
-    - Kembangkan keterampilan yang sesuai dengan tipe kepribadian utama Anda
-    - Cari pengalaman yang menggabungkan ketiga tipe teratas Anda
-    - Pertimbangkan untuk mengambil kursus atau pelatihan di bidang yang relevan
-    """)
+    if anp_results:
+        top_5_list = [major[0] for major in anp_results['top_5_majors']]
+        st.write(f"""
+        Berdasarkan analisis ANP dan profil RIASEC Anda, berikut adalah saran karier:
+        
+        **🏆 Jurusan Utama yang Direkomendasikan:** {recommended_major}
+        
+        **📚 5 Pilihan Terbaik:** {', '.join(top_5_list)}
+        
+        **💼 Bidang Karier yang Cocok:**
+        - Bidang yang melibatkan karakteristik {top_3_types[0].lower()} (kekuatan utama)
+        - Pekerjaan yang memadukan aspek {top_3_types[1].lower()} dan {top_3_types[2].lower()}
+        - Pertimbangkan juga jurusan ranking 2-3 sebagai alternatif
+        
+        **🚀 Tips Pengembangan:**
+        - Fokus mengembangkan keterampilan {top_3_types[0]} sebagai kekuatan utama
+        - Perkuat kemampuan {top_3_types[1]} dan {top_3_types[2]} sebagai pendukung
+        - Cari pengalaman magang atau proyek di bidang terkait 5 jurusan teratas
+        - Pertimbangkan double major atau minor yang melengkapi profil Anda
+        """)
+    else:
+        st.write(f"""
+        Berdasarkan hasil tes Anda, berikut adalah beberapa saran:
+        
+        **🎓 Jurusan yang Direkomendasikan:** {recommended_major}
+        
+        **💼 Bidang Karier yang Cocok:**
+        - Bidang yang melibatkan karakteristik {top_3_types[0].lower()}
+        - Pekerjaan yang memadukan aspek {top_3_types[1].lower()} dan {top_3_types[2].lower()}
+        
+        **🚀 Tips Pengembangan:**
+        - Kembangkan keterampilan yang sesuai dengan tipe kepribadian utama Anda
+        - Cari pengalaman yang menggabungkan ketiga tipe teratas Anda
+        - Pertimbangkan untuk mengambil kursus atau pelatihan di bidang yang relevan
+        """)
 
 # Tombol aksi
 st.markdown("---")
