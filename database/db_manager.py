@@ -41,37 +41,53 @@ class DatabaseManager:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS student_answers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                student_id INTEGER NOT NULL,
+                result_id INTEGER NOT NULL,
                 question_id INTEGER NOT NULL,
                 answer INTEGER NOT NULL CHECK (answer BETWEEN 1 AND 5),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (student_id) REFERENCES users (id),
+                FOREIGN KEY (result_id) REFERENCES test_results (id) ON DELETE CASCADE,
                 FOREIGN KEY (question_id) REFERENCES questions (id),
-                UNIQUE(student_id, question_id)
+                UNIQUE(result_id, question_id)
             )
         ''')
         
-        # Tabel test_results
+        # Tabel alternatives (college majors with RIASEC weights)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS alternatives (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                major_name TEXT UNIQUE NOT NULL,
+                realistic REAL NOT NULL,
+                investigative REAL NOT NULL,
+                artistic REAL NOT NULL,
+                social REAL NOT NULL,
+                enterprising REAL NOT NULL,
+                conventional REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Tabel criteria (top 3 RIASEC scores from student results)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS criteria (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                result_id INTEGER NOT NULL,
+                riasec_type TEXT NOT NULL,
+                score REAL NOT NULL,
+                FOREIGN KEY (result_id) REFERENCES test_results (id)
+            )
+        ''')
+
+        # Tabel test_results (history of student tests)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS test_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 student_id INTEGER NOT NULL,
-                top_3_types TEXT NOT NULL,
-                recommended_major TEXT NOT NULL,
                 holland_scores TEXT NOT NULL,
                 anp_results TEXT,
                 completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (student_id) REFERENCES users (id),
-                UNIQUE(student_id)
+                FOREIGN KEY (student_id) REFERENCES users (id)
             )
         ''')
-        
-        # Add ANP column to existing table if it doesn't exist
-        try:
-            cursor.execute('ALTER TABLE test_results ADD COLUMN anp_results TEXT')
-        except:
-            # Column already exists or other error, continue
-            pass
         
         conn.commit()
         

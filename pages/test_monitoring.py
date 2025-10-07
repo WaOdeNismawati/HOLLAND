@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import json
-import plotly.express as px
+import plotly.graph_objects as go
 from database.db_manager import DatabaseManager
 from utils.auth import check_login
 
@@ -31,220 +31,133 @@ db_manager = DatabaseManager()
 conn = db_manager.get_connection()
 cursor = conn.cursor()
 
-# Ambil data hasil tes
-cursor.execute('''
-    SELECT u.full_name, u.class_name, tr.top_3_types, tr.recommended_major, 
-           tr.holland_scores, tr.completed_at
-    FROM test_results tr
-    JOIN users u ON tr.student_id = u.id
-    ORDER BY tr.completed_at DESC
-''')
-
-results_data = cursor.fetchall()
-
-if not results_data:
-    st.info("Belum ada siswa yang menyelesaikan tes.")
-    st.stop()
-
-# Statistik umum
+# --- Section for Aggregate Statistics ---
 st.subheader("📈 Statistik Umum")
 
-col1, col2, col3, col4 = st.columns(4)
+# Fetch all test results for statistics
+cursor.execute("SELECT anp_results FROM test_results")
+all_results_data = cursor.fetchall()
 
-with col1:
-    st.metric("Total Hasil Tes", len(results_data))
+total_tests = len(all_results_data)
+majors = []
+dominant_types = []
 
-with col2:
-    # Jurusan paling populer
-    majors = [row[3] for row in results_data]
-    most_popular_major = max(set(majors), key=majors.count) if majors else "N/A"
-    st.metric("Jurusan Terpopuler", most_popular_major)
-
-with col3:
-    # Tipe Holland paling dominan
-    all_top_types = []
-    for row in results_data:
-        top_3 = json.loads(row[2])
-        if top_3:
-            all_top_types.append(top_3[0])  # Ambil tipe pertama
-    
-    most_dominant_type = max(set(all_top_types), key=all_top_types.count) if all_top_types else "N/A"
-    st.metric("Tipe Dominan", most_dominant_type)
-
-with col4:
-    # Rata-rata hari ini
-    from datetime import datetime, date
-    today_results = [row for row in results_data if row[5].startswith(str(date.today()))]
-    st.metric("Tes Hari Ini", len(today_results))
-
-st.markdown("---")
-
-# Filter dan pencarian
-st.subheader("🔍 Filter dan Pencarian")
+for (anp_json,) in all_results_data:
+    if anp_json:
+        try:
+            anp_data = json.loads(anp_json)
+            if anp_data.get('ranked_majors') and anp_data['ranked_majors']:
+                majors.append(anp_data['ranked_majors'][0][0])  # Top major
+            if anp_data.get('top_3_criteria'):
+                dominant_types.append(list(anp_data['top_3_criteria'].keys())[0])
+        except (json.JSONDecodeError, IndexError):
+            continue
 
 col1, col2, col3 = st.columns(3)
-
 with col1:
-    # Filter berdasarkan kelas
-    all_classes = list(set([row[1] for row in results_data if row[1]]))
-    selected_class = st.selectbox("Filter Kelas", options=['Semua'] + sorted(all_classes))
-
+    st.metric("Total Hasil Tes", total_tests)
 with col2:
-    # Filter berdasarkan jurusan rekomendasi
-    all_majors = list(set([row[3] for row in results_data]))
-    selected_major = st.selectbox("Filter Jurusan", options=['Semua'] + sorted(all_majors))
-
+    most_popular_major = max(set(majors), key=majors.count) if majors else "N/A"
+    st.metric("Jurusan Terpopuler", most_popular_major)
 with col3:
-    # Pencarian nama
-    search_name = st.text_input("Cari Nama Siswa")
-
-# Apply filters
-filtered_data = results_data
-
-if selected_class != 'Semua':
-    filtered_data = [row for row in filtered_data if row[1] == selected_class]
-
-if selected_major != 'Semua':
-    filtered_data = [row for row in filtered_data if row[3] == selected_major]
-
-if search_name:
-    filtered_data = [row for row in filtered_data if search_name.lower() in row[0].lower()]
+    most_dominant_type = max(set(dominant_types), key=dominant_types.count) if dominant_types else "N/A"
+    st.metric("Tipe Dominan", most_dominant_type)
 
 st.markdown("---")
+# --- End of Statistics Section ---
 
-# Tabel hasil tes
-st.subheader("📋 Hasil Tes Siswa")
+st.subheader("Individual Student History")
 
-if filtered_data:
-    # Prepare data for display
-    display_data = []
-    for row in filtered_data:
-        top_3_types = json.loads(row[2])
-        display_data.append({
-            'Nama': row[0],
-            'Kelas': row[1] or 'N/A',
-            'Tipe 1': top_3_types[0] if len(top_3_types) > 0 else 'N/A',
-            'Tipe 2': top_3_types[1] if len(top_3_types) > 1 else 'N/A',
-            'Tipe 3': top_3_types[2] if len(top_3_types) > 2 else 'N/A',
-            'Jurusan Rekomendasi': row[3],
-            'Tanggal Tes': row[5]
-        })
-    
-    df_results = pd.DataFrame(display_data)
-    st.dataframe(df_results, use_container_width=True)
-    
-    # Download CSV
-    csv = df_results.to_csv(index=False)
-    st.download_button(
-        label="📥 Download Data CSV",
-        data=csv,
-        file_name="hasil_tes_minat_bakat.csv",
-        mime="text/csv"
-    )
-    
-else:
-    st.info("Tidak ada data yang sesuai dengan filter.")
+# Ambil daftar siswa
+cursor.execute("SELECT id, full_name, class_name FROM users WHERE role = 'student' ORDER BY full_name")
+students = cursor.fetchall()
 
-st.markdown("---")
+if not students:
+    st.info("Belum ada data siswa terdaftar.")
+    st.stop()
 
-# Analisis dan visualisasi
-st.subheader("📊 Analisis Data")
+# Dropdown untuk memilih siswa
+student_options = {f"{name} ({class_name or 'N/A'})": student_id for student_id, name, class_name in students}
+selected_student_name = st.selectbox("Pilih Siswa untuk Melihat Riwayat Tes", options=list(student_options.keys()))
 
-if results_data:
-    col1, col2 = st.columns(2)
+if selected_student_name:
+    student_id = student_options[selected_student_name]
+
+    # Ambil semua hasil tes untuk siswa yang dipilih
+    cursor.execute('''
+        SELECT id, holland_scores, anp_results, completed_at
+        FROM test_results
+        WHERE student_id = ?
+        ORDER BY completed_at DESC
+    ''', (student_id,))
     
-    with col1:
-        # Distribusi jurusan rekomendasi
-        major_counts = {}
-        for row in results_data:
-            major = row[3]
-            major_counts[major] = major_counts.get(major, 0) + 1
-        
-        df_majors = pd.DataFrame(list(major_counts.items()), columns=['Jurusan', 'Jumlah'])
-        df_majors = df_majors.sort_values('Jumlah', ascending=True)
-        
-        fig_majors = px.bar(df_majors, x='Jumlah', y='Jurusan', orientation='h',
-                           title="Distribusi Jurusan Rekomendasi",
-                           color='Jumlah', color_continuous_scale='viridis')
-        st.plotly_chart(fig_majors, use_container_width=True)
+    results = cursor.fetchall()
     
-    with col2:
-        # Distribusi tipe Holland dominan
-        dominant_type_counts = {}
-        for row in results_data:
-            top_3 = json.loads(row[2])
-            if top_3:
-                dominant_type = top_3[0]
-                dominant_type_counts[dominant_type] = dominant_type_counts.get(dominant_type, 0) + 1
+    st.subheader(f"Riwayat Tes untuk: {selected_student_name}")
+
+    if not results:
+        st.warning("Siswa ini belum pernah menyelesaikan tes.")
+    else:
+        st.info(f"Ditemukan **{len(results)}** riwayat tes untuk siswa ini.")
         
-        df_types = pd.DataFrame(list(dominant_type_counts.items()), columns=['Tipe Holland', 'Jumlah'])
-        
-        fig_types = px.pie(df_types, values='Jumlah', names='Tipe Holland',
-                          title="Distribusi Tipe Holland Dominan")
-        st.plotly_chart(fig_types, use_container_width=True)
-    
-    # Analisis per kelas
-    if len(set([row[1] for row in results_data if row[1]])) > 1:
-        st.subheader("📚 Analisis per Kelas")
-        
-        class_analysis = {}
-        for row in results_data:
-            class_name = row[1] or 'Tidak Ada Kelas'
-            if class_name not in class_analysis:
-                class_analysis[class_name] = {'total': 0, 'majors': {}}
+        # Tampilkan setiap hasil tes dalam expander
+        for i, result in enumerate(results):
+            result_id, holland_scores_json, anp_results_json, completed_at = result
             
-            class_analysis[class_name]['total'] += 1
-            major = row[3]
-            class_analysis[class_name]['majors'][major] = class_analysis[class_name]['majors'].get(major, 0) + 1
-        
-        # Tampilkan analisis per kelas
-        for class_name, data in class_analysis.items():
-            with st.expander(f"Kelas {class_name} ({data['total']} siswa)"):
-                most_popular = max(data['majors'].items(), key=lambda x: x[1])
-                st.write(f"**Jurusan terpopuler:** {most_popular[0]} ({most_popular[1]} siswa)")
+            holland_scores = json.loads(holland_scores_json)
+            anp_results = json.loads(anp_results_json) if anp_results_json else {}
+
+            header = f"📜 Hasil Tes #{len(results) - i} - Diselesaikan pada: {completed_at}"
+
+            with st.expander(header, expanded=(i == 0)):
+                top_3_criteria = anp_results.get('top_3_criteria', {})
+                ranked_majors = anp_results.get('ranked_majors', [])
                 
-                # Mini chart untuk kelas ini
-                df_class_majors = pd.DataFrame(list(data['majors'].items()), columns=['Jurusan', 'Jumlah'])
-                fig_class = px.bar(df_class_majors, x='Jurusan', y='Jumlah',
-                                  title=f"Distribusi Jurusan - Kelas {class_name}")
-                st.plotly_chart(fig_class, use_container_width=True)
+                if not top_3_criteria or not ranked_majors:
+                    st.warning("Data hasil ANP tidak lengkap untuk tes ini.")
+                    continue
 
-# Detail hasil individual
-st.markdown("---")
-st.subheader("🔍 Detail Hasil Individual")
+                st.subheader("🎯 Rekomendasi Jurusan Utama")
+                top_major, top_score = ranked_majors[0]
+                st.success(f"**🏆 {top_major}** (Prioritas ANP: {top_score:.4f})")
 
-if results_data:
-    # Pilih siswa untuk melihat detail
-    student_options = {f"{row[0]} ({row[1] or 'N/A'})": i for i, row in enumerate(results_data)}
-    selected_student = st.selectbox("Pilih Siswa untuk Melihat Detail", options=list(student_options.keys()))
-    
-    if selected_student:
-        student_index = student_options[selected_student]
-        student_data = results_data[student_index]
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**Informasi Siswa:**")
-            st.write(f"- **Nama:** {student_data[0]}")
-            st.write(f"- **Kelas:** {student_data[1] or 'N/A'}")
-            st.write(f"- **Tanggal Tes:** {student_data[5]}")
-            st.write(f"- **Jurusan Rekomendasi:** {student_data[3]}")
-        
-        with col2:
-            st.write("**3 Tipe Holland Teratas:**")
-            top_3_types = json.loads(student_data[2])
-            for i, holland_type in enumerate(top_3_types, 1):
-                st.write(f"{i}. {holland_type}")
-        
-        # Skor Holland detail
-        holland_scores = json.loads(student_data[4])
-        df_student_scores = pd.DataFrame(list(holland_scores.items()), columns=['Tipe Holland', 'Skor'])
-        df_student_scores = df_student_scores.sort_values('Skor', ascending=True)
-        
-        fig_student = px.bar(df_student_scores, x='Skor', y='Tipe Holland', orientation='h',
-                           title=f"Profil Holland - {student_data[0]}",
-                           color='Skor', color_continuous_scale='plasma')
-        st.plotly_chart(fig_student, use_container_width=True)
+                st.markdown("---")
+
+                col1, col2 = st.columns([1, 2])
+
+                with col1:
+                    st.subheader("📊 Tipe Kepribadian Teratas")
+                    for tipe, score in top_3_criteria.items():
+                        st.metric(label=tipe, value=int(score))
+
+                with col2:
+                    st.subheader("🏅 Peringkat Rekomendasi Jurusan")
+                    if len(ranked_majors) > 1:
+                        other_majors_df = [{"Peringkat": i + 1, "Jurusan": major, "Prioritas": f"{score:.4f}"}
+                                           for i, (major, score) in enumerate(ranked_majors[:5])]
+                        st.dataframe(other_majors_df, use_container_width=True, hide_index=True)
+
+                st.markdown("---")
+
+                st.subheader("📈 Profil Skor Holland")
+
+                # Radar chart
+                categories = list(holland_scores.keys())
+                values = list(holland_scores.values())
+
+                fig_radar = go.Figure()
+                fig_radar.add_trace(go.Scatterpolar(
+                    r=values,
+                    theta=categories,
+                    fill='toself',
+                    name='Skor'
+                ))
+
+                fig_radar.update_layout(
+                    polar=dict(radialaxis=dict(visible=True, range=[0, max(values) + 5 if values else 25])),
+                    title="Visualisasi Skor Holland",
+                    height=350
+                )
+                st.plotly_chart(fig_radar, use_container_width=True)
 
 conn.close()
