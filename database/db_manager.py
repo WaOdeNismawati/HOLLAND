@@ -3,7 +3,7 @@ import bcrypt
 from datetime import datetime
 
 class DatabaseManager:
-    def __init__(self, db_path="talent_test.db"):
+    def __init__(self, db_path="talent_test_baruku.db"):
         self.db_path = db_path
     
     def get_connection(self):
@@ -39,12 +39,14 @@ class DatabaseManager:
         
         # Tabel student_answers
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS student_answers (
+           CREATE TABLE IF NOT EXISTS student_answers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id INTEGER NOT NULL,
                 result_id INTEGER NOT NULL,
                 question_id INTEGER NOT NULL,
                 answer INTEGER NOT NULL CHECK (answer BETWEEN 1 AND 5),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (student_id) REFERENCES users (id) ON DELETE CASCADE,
                 FOREIGN KEY (result_id) REFERENCES test_results (id) ON DELETE CASCADE,
                 FOREIGN KEY (question_id) REFERENCES questions (id),
                 UNIQUE(result_id, question_id)
@@ -158,3 +160,78 @@ class DatabaseManager:
                 INSERT INTO users (username, password, role, full_name, class_name)
                 VALUES (?, ?, ?, ?, ?)
             ''', ("student1", student_password, "student", "Siswa Contoh", "XII IPA 1"))
+
+        # Cek apakah alternatives sudah ada
+        cursor.execute("SELECT COUNT(*) FROM alternatives")
+        alternatives_count = cursor.fetchone()[0]
+
+        if alternatives_count == 0:
+            sample_alternatives = [
+                # Engineering & Technology
+                ('Teknik Mesin', 0.9, 0.8, 0.2, 0.3, 0.4, 0.7),
+                ('Teknik Informatika', 0.6, 0.9, 0.5, 0.4, 0.6, 0.8),
+                ('Teknik Elektro', 0.8, 0.9, 0.3, 0.3, 0.5, 0.7),
+                ('Teknik Sipil', 0.9, 0.7, 0.4, 0.5, 0.6, 0.8),
+                ('Arsitektur', 0.7, 0.6, 0.9, 0.4, 0.5, 0.6),
+                ('Teknik Industri', 0.6, 0.8, 0.3, 0.6, 0.8, 0.9),
+                ('Sistem Informasi', 0.4, 0.8, 0.5, 0.6, 0.7, 0.9),
+                ('Teknik Kimia', 0.7, 0.9, 0.2, 0.4, 0.5, 0.8),
+                ('Teknik Lingkungan', 0.7, 0.8, 0.4, 0.6, 0.5, 0.7),
+                ('Teknik Nuklir', 0.8, 0.9, 0.1, 0.2, 0.4, 0.8),
+
+                # Health Sciences
+                ('Kedokteran', 0.5, 0.9, 0.3, 0.9, 0.4, 0.7),
+                ('Farmasi', 0.4, 0.8, 0.2, 0.7, 0.5, 0.9),
+                ('Keperawatan', 0.5, 0.6, 0.3, 0.9, 0.4, 0.8),
+                ('Kesehatan Masyarakat', 0.3, 0.7, 0.4, 0.9, 0.6, 0.7),
+                ('Gizi', 0.4, 0.8, 0.3, 0.8, 0.5, 0.8),
+                ('Kedokteran Gigi', 0.6, 0.8, 0.4, 0.8, 0.6, 0.7),
+                ('Fisioterapi', 0.6, 0.7, 0.2, 0.9, 0.5, 0.6),
+
+                # Business & Economics
+                ('Manajemen', 0.3, 0.5, 0.4, 0.8, 0.9, 0.8),
+                ('Akuntansi', 0.2, 0.6, 0.2, 0.5, 0.6, 0.9),
+                ('Ekonomi', 0.3, 0.8, 0.3, 0.6, 0.8, 0.8),
+                ('Administrasi Bisnis', 0.3, 0.5, 0.4, 0.7, 0.9, 0.9),
+                ('Keuangan dan Perbankan', 0.2, 0.7, 0.2, 0.6, 0.8, 0.9),
+                ('Pemasaran', 0.3, 0.4, 0.6, 0.8, 0.9, 0.7),
+
+                # Social Sciences & Education
+                ('Psikologi', 0.2, 0.8, 0.5, 0.9, 0.4, 0.6),
+                ('Pendidikan', 0.3, 0.6, 0.7, 0.9, 0.5, 0.7),
+                ('Sosiologi', 0.2, 0.8, 0.5, 0.9, 0.4, 0.5),
+                ('Hubungan Internasional', 0.2, 0.7, 0.4, 0.8, 0.8, 0.6),
+                ('Ilmu Komunikasi', 0.3, 0.5, 0.8, 0.9, 0.7, 0.5),
+                ('Ilmu Politik', 0.2, 0.8, 0.5, 0.8, 0.9, 0.6),
+                ('Hukum', 0.2, 0.8, 0.4, 0.8, 0.8, 0.8),
+
+                # Arts & Creative
+                ('Desain Komunikasi Visual', 0.4, 0.4, 0.9, 0.6, 0.6, 0.4),
+                ('Seni Rupa', 0.6, 0.3, 0.9, 0.4, 0.4, 0.3),
+                ('Desain Interior', 0.7, 0.4, 0.9, 0.5, 0.5, 0.4),
+                ('Musik', 0.4, 0.3, 0.9, 0.6, 0.5, 0.3),
+                ('Film dan Televisi', 0.5, 0.4, 0.9, 0.7, 0.7, 0.4),
+                ('Sastra Indonesia', 0.2, 0.6, 0.9, 0.7, 0.4, 0.4),
+                ('Sastra Inggris', 0.2, 0.6, 0.9, 0.8, 0.5, 0.4),
+
+                # Science & Research
+                ('Matematika', 0.2, 0.9, 0.3, 0.3, 0.3, 0.8),
+                ('Fisika', 0.5, 0.9, 0.4, 0.3, 0.3, 0.7),
+                ('Kimia', 0.6, 0.9, 0.2, 0.3, 0.3, 0.7),
+                ('Biologi', 0.4, 0.9, 0.3, 0.4, 0.3, 0.6),
+                ('Statistika', 0.2, 0.9, 0.3, 0.4, 0.5, 0.9),
+                ('Geografi', 0.7, 0.8, 0.4, 0.5, 0.4, 0.6),
+                ('Astronomi', 0.3, 0.9, 0.2, 0.2, 0.3, 0.7),
+
+                # Agriculture & Environment
+                ('Agribisnis', 0.6, 0.6, 0.3, 0.7, 0.8, 0.8),
+                ('Kehutanan', 0.8, 0.7, 0.4, 0.5, 0.5, 0.6),
+                ('Oseanografi', 0.7, 0.8, 0.3, 0.4, 0.4, 0.5),
+
+                # General
+                ('Studi Umum (General)', 0.167, 0.167, 0.167, 0.167, 0.167, 0.167)
+            ]
+            cursor.executemany('''
+                INSERT INTO alternatives (major_name, realistic, investigative, artistic, social, enterprising, conventional)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', sample_alternatives)
