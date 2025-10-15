@@ -59,6 +59,7 @@ with st.form("test_form"):
             label_visibility="collapsed"
         )
         answers[question_id] = answer
+        
     
     st.markdown("---")
     submit_button = st.form_submit_button("🚀 Selesaikan & Lihat Hasil", type="primary", use_container_width=True)
@@ -70,6 +71,8 @@ if submit_button:
             # We just need to pass the student_id and the collected answers.
             calculator = HollandCalculator()
             result = calculator.process_test_completion(st.session_state.user_id, answers)
+            print("user_id")
+            print(result)
             
             st.success("🎉 Tes berhasil diselesaikan! Berikut adalah hasilnya.")
             st.balloons()

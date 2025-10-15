@@ -3,7 +3,7 @@ from database.db_manager import DatabaseManager
 from utils.anp import ANPProcessor
 
 class HollandCalculator:
-    def __init__(self, db_path="talent_test.db"):
+    def __init__(self, db_path="talent_test_baruku.db"):
         self.db_manager = DatabaseManager(db_path)
         self.anp_processor = ANPProcessor(db_path)
         self.holland_types = ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']
@@ -36,8 +36,13 @@ class HollandCalculator:
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
 
+
         try:
             # 1. Create placeholder result to get a unique ID for this test attempt
+            print(cursor.execute(
+                "INSERT INTO test_results (student_id, holland_scores, anp_results) VALUES (?, ?, ?)",
+                (student_id, '{}', '{}')
+            ))
             cursor.execute(
                 "INSERT INTO test_results (student_id, holland_scores, anp_results) VALUES (?, ?, ?)",
                 (student_id, '{}', '{}')
@@ -47,8 +52,8 @@ class HollandCalculator:
             # 2. Save the answers for this specific test attempt
             for question_id, answer in answers.items():
                 cursor.execute(
-                    "INSERT INTO student_answers (result_id, question_id, answer) VALUES (?, ?, ?)",
-                    (result_id, question_id, answer)
+                    "INSERT INTO student_answers (student_id, result_id, question_id, answer) VALUES (?, ?, ?, ?)",
+                    (student_id, result_id, question_id, answer)
                 )
 
             # 3. Calculate scores using only the answers for this result_id
@@ -73,6 +78,8 @@ class HollandCalculator:
             )
 
             conn.commit()
+            print("hit")
+            print(scores, anp_results)
 
             return {
                 'scores': scores,

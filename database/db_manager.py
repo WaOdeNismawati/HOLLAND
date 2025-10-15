@@ -3,7 +3,7 @@ import bcrypt
 from datetime import datetime
 
 class DatabaseManager:
-    def __init__(self, db_path="talent_test.db"):
+    def __init__(self, db_path="talent_test_baruku.db"):
         self.db_path = db_path
     
     def get_connection(self):
@@ -39,12 +39,14 @@ class DatabaseManager:
         
         # Tabel student_answers
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS student_answers (
+           CREATE TABLE IF NOT EXISTS student_answers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id INTEGER NOT NULL,
                 result_id INTEGER NOT NULL,
                 question_id INTEGER NOT NULL,
                 answer INTEGER NOT NULL CHECK (answer BETWEEN 1 AND 5),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (student_id) REFERENCES users (id) ON DELETE CASCADE,
                 FOREIGN KEY (result_id) REFERENCES test_results (id) ON DELETE CASCADE,
                 FOREIGN KEY (question_id) REFERENCES questions (id),
                 UNIQUE(result_id, question_id)

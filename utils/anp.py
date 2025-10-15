@@ -8,7 +8,7 @@ from scipy.linalg import eig
 from database.db_manager import DatabaseManager
 
 class ANPProcessor:
-    def __init__(self, db_path="talent_test.db"):
+    def __init__(self, db_path="talent_test_baruku.db"):
         """
         Initialize ANP processor by loading alternatives from the database.
         """
