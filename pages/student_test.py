@@ -29,12 +29,14 @@ db_manager = DatabaseManager()
 conn = db_manager.get_connection()
 cursor = conn.cursor()
 
-# Cek apakah siswa pernah mengerjakan tes sebelumnya untuk memberikan opsi retake
+# Block test if already completed
 cursor.execute('SELECT COUNT(*) FROM test_results WHERE student_id = ?', (st.session_state.user_id,))
-has_previous_results = cursor.fetchone()[0] > 0
-
-if has_previous_results:
-    st.info("Anda telah menyelesaikan tes ini sebelumnya. Anda dapat mengambilnya kembali untuk mendapatkan rekomendasi terbaru.")
+if cursor.fetchone()[0] > 0:
+    st.warning("⚠️ Anda sudah menyelesaikan tes ini.")
+    st.info("Jika Anda ingin mengambil tes kembali, silakan hubungi administrator untuk mereset hasil Anda.")
+    if st.button("Lihat Hasil Tes"):
+        st.switch_page("pages/student_results.py")
+    st.stop()
 
 # Ambil semua soal
 cursor.execute('SELECT id, question_text FROM questions ORDER BY id')
@@ -66,8 +68,6 @@ with st.form("test_form"):
 if submit_button:
     with st.spinner("Menghitung hasil..."):
         try:
-            # The new process_test_completion handles all database operations.
-            # We just need to pass the student_id and the collected answers.
             calculator = HollandCalculator()
             result = calculator.process_test_completion(st.session_state.user_id, answers)
             
@@ -77,14 +77,14 @@ if submit_button:
             st.subheader("📊 Hasil Rekomendasi Jurusan (Metode ANP)")
 
             anp_results = result.get('anp_results', {})
-            top_3_criteria = anp_results.get('top_3_criteria', {})
+            top_3_criteria = anp_results.get('top_3_types', [])
             ranked_majors = anp_results.get('ranked_majors', [])
 
             if top_3_criteria:
                 st.write("**Tiga Tipe Kepribadian Teratas Anda:**")
                 cols = st.columns(len(top_3_criteria))
-                for idx, (tipe, score) in enumerate(top_3_criteria.items()):
-                    cols[idx].metric(label=tipe, value=int(score))
+                for idx, tipe in enumerate(top_3_criteria):
+                    cols[idx].metric(label=tipe, value=result['scores'][tipe])
 
             if ranked_majors:
                 st.write("**Peringkat Rekomendasi Jurusan:**")
@@ -97,14 +97,13 @@ if submit_button:
                                        for i, (major, score) in enumerate(ranked_majors[1:5])]
                     st.table(other_majors_df)
             else:
-                st.warning("Tidak dapat menghasilkan rekomendasi. Pastikan data jurusan (alternatives) tersedia.")
+                st.warning("Tidak dapat menghasilkan rekomendasi.")
 
             st.markdown("---")
-            if st.button("Lihat Semua Riwayat Tes", type="primary"):
+            if st.button("Lihat Detail Hasil", type="primary"):
                 st.switch_page("pages/student_results.py")
 
         except Exception as e:
             st.error(f"Terjadi kesalahan saat memproses hasil: {str(e)}")
-            conn.rollback()
 
 conn.close()

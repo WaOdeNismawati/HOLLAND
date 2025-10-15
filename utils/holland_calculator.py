@@ -8,8 +8,8 @@ class HollandCalculator:
         self.anp_processor = ANPProcessor(db_path)
         self.holland_types = ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']
 
-    def calculate_holland_scores(self, result_id):
-        """Calculate Holland scores for a specific test result."""
+    def calculate_holland_scores(self, student_id):
+        """Calculate Holland scores based on student's answers."""
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         
@@ -17,8 +17,8 @@ class HollandCalculator:
             SELECT q.holland_type, sa.answer
             FROM student_answers sa
             JOIN questions q ON sa.question_id = q.id
-            WHERE sa.result_id = ?
-        ''', (result_id,))
+            WHERE sa.student_id = ?
+        ''', (student_id,))
         
         answers = cursor.fetchall()
         conn.close()
@@ -29,57 +29,58 @@ class HollandCalculator:
         
         return scores
 
-    def process_test_completion(self, student_id, answers):
-        """
-        Orchestrates the entire test processing for a new test attempt.
-        """
+    def get_top_3_types(self, scores):
+        """Get the top 3 Holland types from scores."""
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        return [item[0] for item in sorted_scores[:3]]
+
+    def save_test_result(self, student_id, scores, top_3_types, recommended_major, anp_results):
+        """Save the test result, overwriting any previous result."""
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
 
-        try:
-            # 1. Create placeholder result to get a unique ID for this test attempt
-            cursor.execute(
-                "INSERT INTO test_results (student_id, holland_scores, anp_results) VALUES (?, ?, ?)",
-                (student_id, '{}', '{}')
-            )
-            result_id = cursor.lastrowid
+        # Delete previous result to enforce one-result-per-student
+        cursor.execute('DELETE FROM test_results WHERE student_id = ?', (student_id,))
 
-            # 2. Save the answers for this specific test attempt
+        anp_data = json.dumps(anp_results) if anp_results else None
+
+        cursor.execute('''
+            INSERT INTO test_results (student_id, holland_scores, anp_results, top_3_types, recommended_major)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (student_id, json.dumps(scores), anp_data, json.dumps(top_3_types), recommended_major))
+
+        conn.commit()
+        conn.close()
+
+    def process_test_completion(self, student_id, answers):
+        """
+        Process test completion, calculate scores, run ANP, and save the single result.
+        """
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        # Overwrite previous answers
+        try:
+            cursor.execute('DELETE FROM student_answers WHERE student_id = ?', (student_id,))
             for question_id, answer in answers.items():
                 cursor.execute(
-                    "INSERT INTO student_answers (result_id, question_id, answer) VALUES (?, ?, ?)",
-                    (result_id, question_id, answer)
+                    "INSERT INTO student_answers (student_id, question_id, answer) VALUES (?, ?, ?)",
+                    (student_id, question_id, answer)
                 )
-
-            # 3. Calculate scores using only the answers for this result_id
-            scores = self.calculate_holland_scores(result_id)
-
-            # 4. Run ANP analysis
-            anp_results = self.anp_processor.recommend_majors(scores)
-
-            # 5. Save top 3 criteria to the `criteria` table
-            if anp_results and 'top_3_criteria' in anp_results:
-                top_3 = anp_results['top_3_criteria']
-                for riasec_type, score in top_3.items():
-                    cursor.execute(
-                        "INSERT INTO criteria (result_id, riasec_type, score) VALUES (?, ?, ?)",
-                        (result_id, riasec_type, score)
-                    )
-
-            # 6. Update the placeholder result with the actual scores and ANP data
-            cursor.execute(
-                "UPDATE test_results SET holland_scores = ?, anp_results = ? WHERE id = ?",
-                (json.dumps(scores), json.dumps(anp_results), result_id)
-            )
-
             conn.commit()
-
-            return {
-                'scores': scores,
-                'anp_results': anp_results
-            }
-        except Exception as e:
-            conn.rollback()
-            raise e
         finally:
             conn.close()
+
+        scores = self.calculate_holland_scores(student_id)
+        anp_results = self.anp_processor.recommend_majors(scores)
+        top_3_types = self.get_top_3_types(scores)
+
+        recommended_major = anp_results['ranked_majors'][0][0] if anp_results.get('ranked_majors') else "N/A"
+
+        self.save_test_result(student_id, scores, top_3_types, recommended_major, anp_results)
+
+        return {
+            'scores': scores,
+            'anp_results': anp_results,
+            'top_3_types': top_3_types,
+            'recommended_major': recommended_major
+        }
