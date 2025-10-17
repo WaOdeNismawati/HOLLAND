@@ -1,14 +1,16 @@
 from datetime import datetime
 import pytz
-from config import LOCAL_TIMEZONE
+import streamlit as st
 
 def convert_utc_to_local(utc_dt_str):
     """
     Konversi string datetime UTC ke datetime lokal yang diformat,
-    berdasarkan zona waktu di config.py.
+    berdasarkan zona waktu dari session state.
     """
     if not utc_dt_str:
         return None
+
+    local_tz_str = st.session_state.get('timezone', 'Asia/Jakarta')
 
     try:
         # Konversi string ke objek datetime
@@ -18,13 +20,16 @@ def convert_utc_to_local(utc_dt_str):
         utc_tz = pytz.timezone('UTC')
         utc_dt = utc_tz.localize(utc_dt)
 
-        # Konversi ke timezone lokal dari config
-        local_tz = pytz.timezone(LOCAL_TIMEZONE)
+        # Konversi ke timezone lokal dari session state
+        local_tz = pytz.timezone(local_tz_str)
         local_dt = utc_dt.astimezone(local_tz)
 
         # Format ke string yang mudah dibaca
         return local_dt.strftime('%d %B %Y, %H:%M')
     except pytz.UnknownTimeZoneError:
-        return "Invalid Timezone in config.py"
+        # Fallback jika timezone di session state tidak valid
+        local_tz = pytz.timezone('Asia/Jakarta')
+        local_dt = utc_dt.astimezone(local_tz)
+        return local_dt.strftime('%d %B %Y, %H:%M')
     except ValueError:
         return "Invalid Datetime Format"
