@@ -1,6 +1,7 @@
 import streamlit as st
 import sqlite3
 import bcrypt
+from streamlit_tz import streamlit_tz
 from database.db_manager import DatabaseManager
 from utils.auth import authenticate_user, hash_password
 
@@ -44,12 +45,16 @@ def show_login_page():
                 if username and password:
                     user = authenticate_user(username, password)
                     if user:
+                        # Get timezone from browser
+                        timezone = streamlit_tz()
+
                         st.session_state.logged_in = True
                         st.session_state.user_id = user[0]
                         st.session_state.username = user[1]
                         st.session_state.role = user[3]
                         st.session_state.full_name = user[4]
                         st.session_state.class_name = user[5] if user[5] else ""
+                        st.session_state.timezone = timezone if timezone else 'Asia/Jakarta'
                         
                         st.success("Login berhasil!")
                         st.rerun()
