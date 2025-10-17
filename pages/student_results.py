@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from database.db_manager import DatabaseManager
 from utils.auth import check_login
+from utils.timezone import convert_utc_to_local
 
 # Cek login
 check_login()
@@ -60,7 +61,7 @@ anp_results = json.loads(result[3]) if result[3] else None
 completed_at = result[4]
 
 # Header hasil
-st.success(f"✅ Tes diselesaikan pada: {completed_at}")
+st.success(f"✅ Tes diselesaikan pada: {convert_utc_to_local(completed_at)}")
 
 # Rekomendasi utama dengan ANP
 st.subheader("🎯 Rekomendasi Jurusan Terbaik")
@@ -276,7 +277,7 @@ with st.expander("Penjelasan Tipe Kepribadian Anda", expanded=True):
         st.write(f"{i}. **{desc['icon']} {desc['title']}:** {desc['desc']}")
 
 with st.expander("Saran Pengembangan Karier"):
-    if anp_results:
+    if anp_results and anp_results.get('top_5_majors'):
         top_5_list = [major[0] for major in anp_results['top_5_majors']]
         st.write(f"""
         Berdasarkan analisis ANP dan profil RIASEC Anda, berikut adalah saran karier:

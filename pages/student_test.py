@@ -135,13 +135,11 @@ if submit_button:
             st.success(result['recommended_major'])
             
             # Show top 3 ANP recommendations if available
-            if 'anp_results' in result and result['anp_results']:
+            if 'anp_results' in result and result['anp_results']['top_5_majors']:
                 st.write("**Top 3 Pilihan Lainnya:**")
-                top_majors = result['anp_results']['top_5_majors'][:3]
-                for i, (major, data) in enumerate(top_majors[1:], 2):  # Skip first as it's already shown
+                top_majors = result['anp_results']['top_5_majors']
+                for i, (major, data) in enumerate(top_majors[1:4], 2):  # Skip first, take next 3
                     st.write(f"{i}. {major} ({data['final_score']:.2f})")
-                    if i >= 3:  # Only show top 3 additional
-                        break
         
         # Tombol untuk melihat hasil lengkap
         if st.button("Lihat Hasil Lengkap", type="primary"):

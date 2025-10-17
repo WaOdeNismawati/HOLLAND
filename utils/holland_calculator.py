@@ -1,26 +1,15 @@
 import json
+import pandas as pd
+import numpy as np
+import pandas as pd
+import numpy as np
 from database.db_manager import DatabaseManager
 from .anp import recommend_majors
 
 class HollandCalculator:
-    def __init__(self):
+    def __init__(self, majors_csv_path='majors_database.csv'):
         self.holland_types = ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']
-        
-        # Mapping Holland types ke jurusan
-        self.major_recommendations = {
-            ('Realistic', 'Investigative', 'Conventional'): 'Teknik Mesin',
-            ('Realistic', 'Investigative', 'Artistic'): 'Arsitektur',
-            ('Investigative', 'Realistic', 'Conventional'): 'Teknik Informatika',
-            ('Investigative', 'Social', 'Artistic'): 'Psikologi',
-            ('Artistic', 'Social', 'Enterprising'): 'Desain Komunikasi Visual',
-            ('Social', 'Enterprising', 'Conventional'): 'Manajemen',
-            ('Enterprising', 'Social', 'Conventional'): 'Administrasi Bisnis',
-            ('Conventional', 'Enterprising', 'Investigative'): 'Akuntansi',
-            ('Social', 'Artistic', 'Investigative'): 'Pendidikan',
-            ('Realistic', 'Conventional', 'Enterprising'): 'Teknik Sipil',
-            ('Investigative', 'Artistic', 'Social'): 'Kedokteran',
-            ('Artistic', 'Enterprising', 'Social'): 'Komunikasi',
-        }
+        self.majors_df = pd.read_csv(majors_csv_path)
     
     def calculate_holland_scores(self, student_id):
         """Hitung skor Holland berdasarkan jawaban siswa"""
@@ -48,32 +37,34 @@ class HollandCalculator:
         
         return scores
     
-    def get_top_3_types(self, scores):
-        """Dapatkan 3 tipe Holland dengan skor tertinggi"""
-        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        return [item[0] for item in sorted_scores[:3]]
-    
-    def recommend_major(self, top_3_types):
-        """Rekomendasikan jurusan berdasarkan 3 tipe teratas"""
-        top_3_tuple = tuple(top_3_types)
-        
-        # Cari rekomendasi yang cocok
-        for key, major in self.major_recommendations.items():
-            if set(key) == set(top_3_tuple):
-                return major
-        
-        # Jika tidak ada yang cocok persis, berikan rekomendasi berdasarkan tipe pertama
-        primary_type = top_3_types[0]
-        fallback_recommendations = {
-            'Realistic': 'Teknik Mesin',
-            'Investigative': 'Teknik Informatika',
-            'Artistic': 'Desain Komunikasi Visual',
-            'Social': 'Psikologi',
-            'Enterprising': 'Manajemen',
-            'Conventional': 'Akuntansi'
-        }
-        
-        return fallback_recommendations.get(primary_type, 'Manajemen Umum')
+    def calculate_similarity(self, student_scores, major_profiles):
+        """Hitung cosine similarity antara skor siswa dan profil jurusan"""
+        student_vector = np.array([student_scores[ht] for ht in self.holland_types])
+        major_vectors = major_profiles[self.holland_types].values
+
+        # Normalisasi
+        norm_student = np.linalg.norm(student_vector)
+        norm_major = np.linalg.norm(major_vectors, axis=1)
+
+        # Handle zero vector case
+        if norm_student == 0 or np.any(norm_major == 0):
+            return np.zeros(major_vectors.shape[0])
+
+        # Hitung cosine similarity
+        similarity = np.dot(major_vectors, student_vector) / (norm_major * norm_student)
+        return similarity
+
+    def recommend_major(self, student_scores):
+        """Rekomendasikan jurusan berdasarkan skor Holland siswa menggunakan cosine similarity"""
+        major_profiles = self.majors_df.copy()
+        major_profiles['similarity'] = self.calculate_similarity(student_scores, major_profiles)
+
+        # Urutkan berdasarkan similarity
+        ranked_majors = major_profiles.sort_values(by='similarity', ascending=False)
+
+        # Ambil jurusan teratas
+        top_major = ranked_majors.iloc[0]['Major']
+        return top_major
     
     def save_test_result(self, student_id, scores, top_3_types, recommended_major, anp_results=None):
         """Simpan hasil tes ke database dengan data ANP"""
@@ -99,16 +90,19 @@ class HollandCalculator:
     def process_test_completion(self, student_id):
         """Proses lengkap setelah siswa menyelesaikan tes dengan ANP integration"""
         scores = self.calculate_holland_scores(student_id)
-        top_3_types = self.get_top_3_types(scores)
         
-        # Traditional recommendation (kept for compatibility)
-        traditional_major = self.recommend_major(top_3_types)
+        # Get top 3 types for compatibility and display
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        top_3_types = [item[0] for item in sorted_scores[:3]]
+
+        # New recommendation based on cosine similarity
+        recommended_major = self.recommend_major(scores)
         
         # ANP-based recommendations
         anp_results = recommend_majors(scores)
         
         # Get top ANP recommendation
-        anp_top_major = anp_results['top_5_majors'][0][0] if anp_results['top_5_majors'] else traditional_major
+        anp_top_major = anp_results['top_5_majors'][0][0] if anp_results['top_5_majors'] else recommended_major
         
         # Save complete results
         self.save_test_result(student_id, scores, top_3_types, anp_top_major, anp_results)
@@ -117,6 +111,5 @@ class HollandCalculator:
             'scores': scores,
             'top_3_types': top_3_types,
             'recommended_major': anp_top_major,
-            'traditional_major': traditional_major,
             'anp_results': anp_results
         }

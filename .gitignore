@@ -1,3 +1,11 @@
 utils/__pycache__
 database/__pycache__
 venv/
+
+# Database files
+*.db
+*.sqlite3
+
+# Cache files
+__pycache__/
+*.pyc
