@@ -5,27 +5,10 @@ from .anp import recommend_majors
 class HollandCalculator:
     def __init__(self):
         self.holland_types = ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']
-        
-        # Mapping Holland types ke jurusan
-        self.major_recommendations = {
-            ('Realistic', 'Investigative', 'Conventional'): 'Teknik Mesin',
-            ('Realistic', 'Investigative', 'Artistic'): 'Arsitektur',
-            ('Investigative', 'Realistic', 'Conventional'): 'Teknik Informatika',
-            ('Investigative', 'Social', 'Artistic'): 'Psikologi',
-            ('Artistic', 'Social', 'Enterprising'): 'Desain Komunikasi Visual',
-            ('Social', 'Enterprising', 'Conventional'): 'Manajemen',
-            ('Enterprising', 'Social', 'Conventional'): 'Administrasi Bisnis',
-            ('Conventional', 'Enterprising', 'Investigative'): 'Akuntansi',
-            ('Social', 'Artistic', 'Investigative'): 'Pendidikan',
-            ('Realistic', 'Conventional', 'Enterprising'): 'Teknik Sipil',
-            ('Investigative', 'Artistic', 'Social'): 'Kedokteran',
-            ('Artistic', 'Enterprising', 'Social'): 'Komunikasi',
-        }
-    
+
     def calculate_holland_scores(self, student_id):
-        """Hitung skor Holland berdasarkan jawaban siswa"""
-        db_manager = DatabaseManager()
-        conn = db_manager.get_connection()
+        """Calculate Holland scores based on student's answers."""
+        conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         
         # Ambil semua jawaban siswa dengan tipe Holland
@@ -47,76 +30,59 @@ class HollandCalculator:
             scores[holland_type] += answer
         
         return scores
-    
+
     def get_top_3_types(self, scores):
-        """Dapatkan 3 tipe Holland dengan skor tertinggi"""
+        """Get the top 3 Holland types from scores."""
         sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return [item[0] for item in sorted_scores[:3]]
-    
-    def recommend_major(self, top_3_types):
-        """Rekomendasikan jurusan berdasarkan 3 tipe teratas"""
-        top_3_tuple = tuple(top_3_types)
-        
-        # Cari rekomendasi yang cocok
-        for key, major in self.major_recommendations.items():
-            if set(key) == set(top_3_tuple):
-                return major
-        
-        # Jika tidak ada yang cocok persis, berikan rekomendasi berdasarkan tipe pertama
-        primary_type = top_3_types[0]
-        fallback_recommendations = {
-            'Realistic': 'Teknik Mesin',
-            'Investigative': 'Teknik Informatika',
-            'Artistic': 'Desain Komunikasi Visual',
-            'Social': 'Psikologi',
-            'Enterprising': 'Manajemen',
-            'Conventional': 'Akuntansi'
-        }
-        
-        return fallback_recommendations.get(primary_type, 'Manajemen Umum')
-    
-    def save_test_result(self, student_id, scores, top_3_types, recommended_major, anp_results=None):
-        """Simpan hasil tes ke database dengan data ANP"""
-        db_manager = DatabaseManager()
-        conn = db_manager.get_connection()
+
+    def save_test_result(self, student_id, scores, top_3_types, recommended_major, anp_results):
+        """Save the test result, overwriting any previous result."""
+        conn = self.db_manager.get_connection()
         cursor = conn.cursor()
-        
-        # Hapus hasil sebelumnya jika ada
+
+        # Delete previous result to enforce one-result-per-student
         cursor.execute('DELETE FROM test_results WHERE student_id = ?', (student_id,))
-        
-        # Prepare ANP data for storage
+
         anp_data = json.dumps(anp_results) if anp_results else None
-        
-        # Simpan hasil baru
+
         cursor.execute('''
-            INSERT INTO test_results (student_id, top_3_types, recommended_major, holland_scores, anp_results)
+            INSERT INTO test_results (student_id, holland_scores, anp_results, top_3_types, recommended_major)
             VALUES (?, ?, ?, ?, ?)
-        ''', (student_id, json.dumps(top_3_types), recommended_major, json.dumps(scores), anp_data))
-        
+        ''', (student_id, json.dumps(scores), anp_data, json.dumps(top_3_types), recommended_major))
+
         conn.commit()
         conn.close()
-    
-    def process_test_completion(self, student_id):
-        """Proses lengkap setelah siswa menyelesaikan tes dengan ANP integration"""
+
+    def process_test_completion(self, student_id, answers):
+        """
+        Process test completion, calculate scores, run ANP, and save the single result.
+        """
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        # Overwrite previous answers
+        try:
+            cursor.execute('DELETE FROM student_answers WHERE student_id = ?', (student_id,))
+            for question_id, answer in answers.items():
+                cursor.execute(
+                    "INSERT INTO student_answers (student_id, question_id, answer) VALUES (?, ?, ?)",
+                    (student_id, question_id, answer)
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
         scores = self.calculate_holland_scores(student_id)
+        anp_results = self.anp_processor.recommend_majors(scores)
         top_3_types = self.get_top_3_types(scores)
-        
-        # Traditional recommendation (kept for compatibility)
-        traditional_major = self.recommend_major(top_3_types)
-        
-        # ANP-based recommendations
-        anp_results = recommend_majors(scores)
-        
-        # Get top ANP recommendation
-        anp_top_major = anp_results['top_5_majors'][0][0] if anp_results['top_5_majors'] else traditional_major
-        
-        # Save complete results
-        self.save_test_result(student_id, scores, top_3_types, anp_top_major, anp_results)
-        
+
+        recommended_major = anp_results['ranked_majors'][0][0] if anp_results.get('ranked_majors') else "N/A"
+
+        self.save_test_result(student_id, scores, top_3_types, recommended_major, anp_results)
+
         return {
             'scores': scores,
+            'anp_results': anp_results,
             'top_3_types': top_3_types,
-            'recommended_major': anp_top_major,
-            'traditional_major': traditional_major,
-            'anp_results': anp_results
+            'recommended_major': recommended_major
         }

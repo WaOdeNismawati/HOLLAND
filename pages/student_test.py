@@ -29,20 +29,13 @@ db_manager = DatabaseManager()
 conn = db_manager.get_connection()
 cursor = conn.cursor()
 
-# Cek apakah siswa sudah mengerjakan tes
-cursor.execute('''
-    SELECT COUNT(*) FROM test_results WHERE student_id = ?
-''', (st.session_state.user_id,))
-
+# Block test if already completed
+cursor.execute('SELECT COUNT(*) FROM test_results WHERE student_id = ?', (st.session_state.user_id,))
 if cursor.fetchone()[0] > 0:
-    st.warning("⚠️ Anda sudah menyelesaikan tes ini sebelumnya.")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Lihat Hasil Tes"):
-            st.switch_page("pages/student_results.py")
-    with col2:
-        if st.button("Kembali ke Dashboard"):
-            st.switch_page("pages/student_dashboard.py")
+    st.warning("⚠️ Anda sudah menyelesaikan tes ini.")
+    st.info("Jika Anda ingin mengambil tes kembali, silakan hubungi administrator untuk mereset hasil Anda.")
+    if st.button("Lihat Hasil Tes"):
+        st.switch_page("pages/student_results.py")
     st.stop()
 
 # Ambil semua soal
@@ -100,39 +93,10 @@ with st.form("test_form"):
 
 # Proses jawaban
 if submit_button:
-    try:
-        # Hapus jawaban lama jika ada
-        cursor.execute('DELETE FROM student_answers WHERE student_id = ?', (st.session_state.user_id,))
-        
-        # Simpan jawaban baru
-        for question_id, answer in answers.items():
-            cursor.execute('''
-                INSERT INTO student_answers (student_id, question_id, answer)
-                VALUES (?, ?, ?)
-            ''', (st.session_state.user_id, question_id, answer))
-        
-        conn.commit()
-        
-        # Hitung hasil menggunakan Holland Calculator
-        calculator = HollandCalculator()
-        result = calculator.process_test_completion(st.session_state.user_id)
-        
-        st.success("🎉 Tes berhasil diselesaikan!")
-        st.balloons()
-        
-        # Tampilkan hasil singkat
-        st.subheader("📊 Hasil Tes Anda:")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**3 Tipe Kepribadian Teratas:**")
-            for i, holland_type in enumerate(result['top_3_types'], 1):
-                st.write(f"{i}. {holland_type}")
-        
-        with col2:
-            st.write("**Rekomendasi Jurusan Terbaik (ANP):**")
-            st.success(result['recommended_major'])
+    with st.spinner("Menghitung hasil..."):
+        try:
+            calculator = HollandCalculator()
+            result = calculator.process_test_completion(st.session_state.user_id, answers)
             
             # Show top 3 ANP recommendations if available
             if 'anp_results' in result and result['anp_results']:
@@ -147,8 +111,36 @@ if submit_button:
         if st.button("Lihat Hasil Lengkap", type="primary"):
             st.switch_page("pages/student_results.py")
             
-    except Exception as e:
-        st.error(f"Terjadi kesalahan: {str(e)}")
-        conn.rollback()
+            st.subheader("📊 Hasil Rekomendasi Jurusan (Metode ANP)")
+
+            anp_results = result.get('anp_results', {})
+            top_3_criteria = anp_results.get('top_3_types', [])
+            ranked_majors = anp_results.get('ranked_majors', [])
+
+            if top_3_criteria:
+                st.write("**Tiga Tipe Kepribadian Teratas Anda:**")
+                cols = st.columns(len(top_3_criteria))
+                for idx, tipe in enumerate(top_3_criteria):
+                    cols[idx].metric(label=tipe, value=result['scores'][tipe])
+
+            if ranked_majors:
+                st.write("**Peringkat Rekomendasi Jurusan:**")
+                top_major, top_score = ranked_majors[0]
+                st.success(f"**🏆 Rekomendasi Utama: {top_major}** (Prioritas: {top_score:.4f})")
+
+                if len(ranked_majors) > 1:
+                    st.write("Pilihan lainnya:")
+                    other_majors_df = [{"Peringkat": i + 2, "Jurusan": major, "Prioritas": f"{score:.4f}"}
+                                       for i, (major, score) in enumerate(ranked_majors[1:5])]
+                    st.table(other_majors_df)
+            else:
+                st.warning("Tidak dapat menghasilkan rekomendasi.")
+
+            st.markdown("---")
+            if st.button("Lihat Detail Hasil", type="primary"):
+                st.switch_page("pages/student_results.py")
+
+        except Exception as e:
+            st.error(f"Terjadi kesalahan saat memproses hasil: {str(e)}")
 
 conn.close()
