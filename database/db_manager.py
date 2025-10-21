@@ -39,7 +39,7 @@ class DatabaseManager:
         
         # Tabel student_answers - Reverted to simple, non-history version
         cursor.execute('''
-           CREATE TABLE IF NOT EXISTS student_answers (
+            CREATE TABLE IF NOT EXISTS student_answers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 student_id INTEGER NOT NULL,
                 question_id INTEGER NOT NULL,
@@ -79,6 +79,13 @@ class DatabaseManager:
                 FOREIGN KEY (student_id) REFERENCES users (id) ON DELETE CASCADE
             )
         ''')
+        
+        # Add ANP column to existing table if it doesn't exist
+        try:
+            cursor.execute('ALTER TABLE test_results ADD COLUMN anp_results TEXT')
+        except:
+            # Column already exists or other error, continue
+            pass
         
         conn.commit()
         

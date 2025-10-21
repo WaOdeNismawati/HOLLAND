@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 from database.db_manager import DatabaseManager
 from utils.auth import check_login, logout
+from utils.timezone import convert_utc_to_local
 
 # Cek login
 check_login()
@@ -116,6 +117,10 @@ students_data = cursor.fetchall()
 if students_data:
     df_students = pd.DataFrame(students_data, 
                               columns=['Nama Lengkap', 'Kelas', 'Tanggal Daftar', 'Status Tes'])
+
+    # Konversi dan format kolom 'Tanggal Daftar'
+    df_students['Tanggal Daftar'] = df_students['Tanggal Daftar'].apply(convert_utc_to_local)
+
     st.dataframe(df_students, use_container_width=True)
 else:
     st.info("Belum ada data siswa.")

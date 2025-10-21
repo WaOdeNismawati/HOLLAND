@@ -5,4 +5,4 @@ seaborn
 plotly
 bcrypt
 scipy
-numpy
+streamlit-tz

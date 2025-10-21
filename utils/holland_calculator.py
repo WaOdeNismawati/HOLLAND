@@ -1,11 +1,9 @@
 import json
 from database.db_manager import DatabaseManager
-from utils.anp import ANPProcessor
+from .anp import recommend_majors
 
 class HollandCalculator:
-    def __init__(self, db_path="talent_test.db"):
-        self.db_manager = DatabaseManager(db_path)
-        self.anp_processor = ANPProcessor(db_path)
+    def __init__(self):
         self.holland_types = ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']
 
     def calculate_holland_scores(self, student_id):
@@ -13,6 +11,7 @@ class HollandCalculator:
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         
+        # Ambil semua jawaban siswa dengan tipe Holland
         cursor.execute('''
             SELECT q.holland_type, sa.answer
             FROM student_answers sa
@@ -23,7 +22,10 @@ class HollandCalculator:
         answers = cursor.fetchall()
         conn.close()
         
+        # Inisialisasi skor
         scores = {holland_type: 0 for holland_type in self.holland_types}
+        
+        # Hitung skor untuk setiap tipe
         for holland_type, answer in answers:
             scores[holland_type] += answer
         

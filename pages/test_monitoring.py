@@ -52,15 +52,23 @@ st.subheader("📈 Statistik Umum")
 majors = [row[3] for row in results_data]
 all_top_types = [json.loads(row[2])[0] for row in results_data if row[2] and len(json.loads(row[2])) > 0]
 
-col1, col2, col3 = st.columns(3)
 with col1:
     st.metric("Total Hasil Tes", len(results_data))
 with col2:
+    # Jurusan paling populer
+    majors = [row[3] for row in results_data]
     most_popular_major = max(set(majors), key=majors.count) if majors else "N/A"
     st.metric("Jurusan Terpopuler", most_popular_major)
+
 with col3:
     most_dominant_type = max(set(all_top_types), key=all_top_types.count) if all_top_types else "N/A"
     st.metric("Tipe Dominan", most_dominant_type)
+
+with col4:
+    # Rata-rata hari ini
+    from datetime import datetime, date
+    today_results = [row for row in results_data if row[5].startswith(str(date.today()))]
+    st.metric("Tes Hari Ini", len(today_results))
 
 st.markdown("---")
 
