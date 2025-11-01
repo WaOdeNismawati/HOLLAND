@@ -1,26 +1,19 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import plotly.express as px
 from database.db_manager import DatabaseManager
-from utils.auth import check_login, logout
+from utils.auth import check_login
+from utils.navbar import show_navbar
 
-# Cek login
+# Cek login dan tampilkan navbar
 check_login()
+show_navbar()
 
 if st.session_state.role != 'admin':
     st.error("Akses ditolak! Halaman ini hanya untuk admin.")
     st.stop()
 
 st.set_page_config(page_title="Dashboard Admin", page_icon="👨‍💼", layout="wide")
-
-# Sidebar
-with st.sidebar:
-    st.title("🎓 Admin Panel")
-    st.write(f"Selamat datang, {st.session_state.full_name}")
-    
-    if st.button("Keluar", type="primary"):
-        logout()
 
 # Main content
 st.title("📊 Dashboard Admin")

@@ -2,9 +2,11 @@ import streamlit as st
 import pandas as pd
 from database.db_manager import DatabaseManager
 from utils.auth import check_login, hash_password
+from utils.navbar import show_navbar
 
-# Cek login
+# Cek login dan tampilkan navbar
 check_login()
+show_navbar()
 
 if st.session_state.role != 'admin':
     st.error("Akses ditolak! Halaman ini hanya untuk admin.")
@@ -12,20 +14,12 @@ if st.session_state.role != 'admin':
 
 st.set_page_config(page_title="Manajemen Data", page_icon="🗃️", layout="wide")
 
-# Sidebar
-with st.sidebar:
-    st.title("🗃️ Manajemen Data")
-    st.write(f"Admin: {st.session_state.full_name}")
-    
-    if st.button("🏠 Dashboard Admin"):
-        st.switch_page("pages/admin_dashboard.py")
-
 # Main content
 st.title("🗃️ Manajemen Data")
 st.markdown("---")
 
 # Tabs untuk berbagai jenis data
-tab1, tab2 = st.tabs(["👥 Data Siswa", "📝 Data Soal"])
+tab1, tab2, tab3 = st.tabs(["👥 Data Siswa", "📝 Data Soal", "🎓 Data Jurusan (Alternatif)"])
 
 # Database connection
 db_manager = DatabaseManager()
@@ -83,9 +77,8 @@ with tab1:
     
     cursor.execute('''
         SELECT u.id, u.username, u.full_name, u.class_name, u.created_at,
-               CASE WHEN tr.id IS NOT NULL THEN 'Sudah' ELSE 'Belum' END as status_tes
+               (SELECT COUNT(*) FROM test_results WHERE student_id = u.id) as test_count
         FROM users u
-        LEFT JOIN test_results tr ON u.id = tr.student_id
         WHERE u.role = 'student'
         ORDER BY u.created_at DESC
     ''')
@@ -94,25 +87,18 @@ with tab1:
     
     if students_data:
         df_students = pd.DataFrame(students_data, 
-                                  columns=['ID', 'Username', 'Nama Lengkap', 'Kelas', 'Tanggal Daftar', 'Status Tes'])
+                                  columns=['ID', 'Username', 'Nama Lengkap', 'Kelas', 'Tanggal Daftar', 'Jumlah Tes'])
         
         st.subheader("📋 Daftar Siswa")
         
         # Filter
-        col1, col2 = st.columns(2)
-        with col1:
-            filter_class = st.selectbox("Filter Kelas", 
+        filter_class = st.selectbox("Filter Kelas",
                                        options=['Semua'] + list(df_students['Kelas'].dropna().unique()))
-        with col2:
-            filter_status = st.selectbox("Filter Status Tes", 
-                                        options=['Semua', 'Sudah', 'Belum'])
         
         # Apply filters
         filtered_df = df_students.copy()
         if filter_class != 'Semua':
             filtered_df = filtered_df[filtered_df['Kelas'] == filter_class]
-        if filter_status != 'Semua':
-            filtered_df = filtered_df[filtered_df['Status Tes'] == filter_status]
         
         st.dataframe(filtered_df, use_container_width=True)
         
@@ -133,20 +119,25 @@ with tab1:
             
             with col2:
                 if st.button("🗑️ Hapus Siswa", use_container_width=True, type="secondary"):
-                    if st.session_state.get('confirm_delete_student') == student_id:
-                        # Hapus siswa dan data terkait
+                    st.session_state.confirm_delete_student_id = student_id
+
+            if st.session_state.get('confirm_delete_student_id') == student_id:
+                st.warning(f"Yakin ingin menghapus siswa **{selected_student}** dan semua datanya?")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("✅ Ya, Hapus", use_container_width=True, key=f"confirm_del_s_{student_id}"):
                         cursor.execute('DELETE FROM test_results WHERE student_id = ?', (student_id,))
                         cursor.execute('DELETE FROM student_answers WHERE student_id = ?', (student_id,))
                         cursor.execute('DELETE FROM users WHERE id = ?', (student_id,))
                         conn.commit()
                         st.success("Siswa berhasil dihapus!")
-                        if 'confirm_delete_student' in st.session_state:
-                            del st.session_state.confirm_delete_student
+                        del st.session_state.confirm_delete_student_id
                         st.rerun()
-                    else:
-                        st.session_state.confirm_delete_student = student_id
-                        st.warning("Klik sekali lagi untuk konfirmasi hapus!")
-            
+                with c2:
+                    if st.button("❌ Batal", use_container_width=True, key=f"cancel_del_s_{student_id}"):
+                        del st.session_state.confirm_delete_student_id
+                        st.rerun()
+
             # Form edit siswa
             if st.session_state.get('edit_student_id') == student_id:
                 cursor.execute('SELECT username, full_name, class_name FROM users WHERE id = ?', (student_id,))
@@ -241,7 +232,7 @@ with tab2:
         # Filter berdasarkan tipe Holland
         filter_holland = st.selectbox("Filter Tipe Holland", 
                                      options=['Semua'] + ['Realistic', 'Investigative', 'Artistic', 
-                                                          'Social', 'Enterprising', 'Conventional'])
+                                                          'Social', 'Enterprising', 'Conventional'], key="filter_q_holland")
         
         if filter_holland != 'Semua':
             filtered_questions = df_questions[df_questions['Tipe Holland'] == filter_holland]
@@ -254,7 +245,7 @@ with tab2:
         st.subheader("✏️ Edit/Hapus Soal")
         
         question_options = {f"Soal {row[0]}: {row[1][:50]}...": row[0] for row in questions_data}
-        selected_question = st.selectbox("Pilih Soal", options=list(question_options.keys()))
+        selected_question = st.selectbox("Pilih Soal", options=list(question_options.keys()), key="select_q")
         
         if selected_question:
             question_id = question_options[selected_question]
@@ -267,18 +258,23 @@ with tab2:
             
             with col2:
                 if st.button("🗑️ Hapus Soal", use_container_width=True, type="secondary"):
-                    if st.session_state.get('confirm_delete_question') == question_id:
-                        # Hapus soal dan jawaban terkait
+                    st.session_state.confirm_delete_question_id = question_id
+
+            if st.session_state.get('confirm_delete_question_id') == question_id:
+                st.warning(f"Yakin ingin menghapus soal #{question_id}?")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("✅ Ya, Hapus", use_container_width=True, key=f"confirm_del_q_{question_id}"):
                         cursor.execute('DELETE FROM student_answers WHERE question_id = ?', (question_id,))
                         cursor.execute('DELETE FROM questions WHERE id = ?', (question_id,))
                         conn.commit()
                         st.success("Soal berhasil dihapus!")
-                        if 'confirm_delete_question' in st.session_state:
-                            del st.session_state.confirm_delete_question
+                        del st.session_state.confirm_delete_question_id
                         st.rerun()
-                    else:
-                        st.session_state.confirm_delete_question = question_id
-                        st.warning("Klik sekali lagi untuk konfirmasi hapus!")
+                with c2:
+                    if st.button("❌ Batal", use_container_width=True, key=f"cancel_del_q_{question_id}"):
+                        del st.session_state.confirm_delete_question_id
+                        st.rerun()
             
             # Form edit soal
             if st.session_state.get('edit_question_id') == question_id:
@@ -318,4 +314,128 @@ with tab2:
     else:
         st.info("Belum ada data soal.")
     
+    conn.close()
+
+# Tab 3: Data Jurusan (Alternatif)
+with tab3:
+    st.subheader("🎓 Manajemen Data Jurusan (Alternatif ANP)")
+
+    with st.expander("➕ Tambah Jurusan Baru"):
+        with st.form("add_alternative_form", clear_on_submit=True):
+            new_major_name = st.text_input("Nama Jurusan")
+            st.write("Bobot RIASEC (0.0 - 1.0):")
+            cols = st.columns(3)
+            with cols[0]:
+                new_r = st.number_input("Realistic", min_value=0.0, max_value=1.0, step=0.1, format="%.1f", key="new_r")
+                new_i = st.number_input("Investigative", min_value=0.0, max_value=1.0, step=0.1, format="%.1f", key="new_i")
+            with cols[1]:
+                new_a = st.number_input("Artistic", min_value=0.0, max_value=1.0, step=0.1, format="%.1f", key="new_a")
+                new_s = st.number_input("Social", min_value=0.0, max_value=1.0, step=0.1, format="%.1f", key="new_s")
+            with cols[2]:
+                new_e = st.number_input("Enterprising", min_value=0.0, max_value=1.0, step=0.1, format="%.1f", key="new_e")
+                new_c = st.number_input("Conventional", min_value=0.0, max_value=1.0, step=0.1, format="%.1f", key="new_c")
+
+            if st.form_submit_button("Tambah Jurusan"):
+                if new_major_name:
+                    conn = db_manager.get_connection()
+                    cursor = conn.cursor()
+                    try:
+                        cursor.execute(
+                            "INSERT INTO alternatives (major_name, realistic, investigative, artistic, social, enterprising, conventional) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (new_major_name, new_r, new_i, new_a, new_s, new_e, new_c)
+                        )
+                        conn.commit()
+                        st.success(f"Jurusan '{new_major_name}' berhasil ditambahkan!")
+                        st.rerun()
+                    except conn.IntegrityError:
+                        st.error(f"Jurusan dengan nama '{new_major_name}' sudah ada.")
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+                    finally:
+                        conn.close()
+                else:
+                    st.error("Nama jurusan tidak boleh kosong!")
+
+    conn = db_manager.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, major_name, realistic, investigative, artistic, social, enterprising, conventional FROM alternatives ORDER BY major_name")
+    alternatives_data = cursor.fetchall()
+
+    if alternatives_data:
+        df_alternatives = pd.DataFrame(alternatives_data, columns=['ID', 'Nama Jurusan', 'R', 'I', 'A', 'S', 'E', 'C'])
+        st.subheader("📋 Daftar Jurusan (Alternatif)")
+        st.dataframe(df_alternatives, use_container_width=True, hide_index=True)
+
+        st.subheader("✏️ Edit/Hapus Jurusan")
+        major_options = {row[1]: row[0] for row in alternatives_data}
+        selected_major_name = st.selectbox("Pilih Jurusan", options=list(major_options.keys()), key="select_major_edit")
+
+        if selected_major_name:
+            major_id = major_options[selected_major_name]
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✏️ Edit Jurusan", key=f"edit_major_{major_id}", use_container_width=True):
+                    st.session_state.edit_major_id = major_id
+                    st.rerun()
+            with col2:
+                if st.button("🗑️ Hapus Jurusan", key=f"delete_major_{major_id}", use_container_width=True, type="secondary"):
+                    st.session_state.confirm_delete_major_id = major_id
+                    st.rerun()
+
+            if st.session_state.get('confirm_delete_major_id') == major_id:
+                st.warning(f"Yakin ingin menghapus **{selected_major_name}**?")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("✅ Ya, Hapus", use_container_width=True, key=f"confirm_del_m_{major_id}"):
+                        cursor.execute('DELETE FROM alternatives WHERE id = ?', (major_id,))
+                        conn.commit()
+                        st.success("Jurusan berhasil dihapus!")
+                        del st.session_state.confirm_delete_major_id
+                        st.rerun()
+                with c2:
+                    if st.button("❌ Batal", use_container_width=True, key=f"cancel_del_m_{major_id}"):
+                        del st.session_state.confirm_delete_major_id
+                        st.rerun()
+
+            if st.session_state.get('edit_major_id') == major_id:
+                cursor.execute("SELECT major_name, realistic, investigative, artistic, social, enterprising, conventional FROM alternatives WHERE id = ?", (major_id,))
+                current_major = cursor.fetchone()
+                with st.form(f"edit_major_form_{major_id}"):
+                    st.write(f"**Edit Jurusan: {current_major[0]}**")
+                    edit_major_name = st.text_input("Nama Jurusan", value=current_major[0])
+                    cols_edit = st.columns(3)
+                    with cols_edit[0]:
+                        edit_r = st.number_input("Realistic", value=float(current_major[1]), min_value=0.0, max_value=1.0, step=0.1, format="%.1f")
+                        edit_i = st.number_input("Investigative", value=float(current_major[2]), min_value=0.0, max_value=1.0, step=0.1, format="%.1f")
+                    with cols_edit[1]:
+                        edit_a = st.number_input("Artistic", value=float(current_major[3]), min_value=0.0, max_value=1.0, step=0.1, format="%.1f")
+                        edit_s = st.number_input("Social", value=float(current_major[4]), min_value=0.0, max_value=1.0, step=0.1, format="%.1f")
+                    with cols_edit[2]:
+                        edit_e = st.number_input("Enterprising", value=float(current_major[5]), min_value=0.0, max_value=1.0, step=0.1, format="%.1f")
+                        edit_c = st.number_input("Conventional", value=float(current_major[6]), min_value=0.0, max_value=1.0, step=0.1, format="%.1f")
+
+                    btn_cols = st.columns(2)
+                    with btn_cols[0]:
+                        if st.form_submit_button("💾 Simpan"):
+                            try:
+                                cursor.execute(
+                                    "UPDATE alternatives SET major_name=?, realistic=?, investigative=?, artistic=?, social=?, enterprising=?, conventional=? WHERE id=?",
+                                    (edit_major_name, edit_r, edit_i, edit_a, edit_s, edit_e, edit_c, major_id)
+                                )
+                                conn.commit()
+                                st.success("Data jurusan berhasil diupdate!")
+                                del st.session_state.edit_major_id
+                                st.rerun()
+                            except conn.IntegrityError:
+                                st.error(f"Nama jurusan '{edit_major_name}' sudah ada.")
+                            except Exception as e:
+                                st.error(f"Error: {str(e)}")
+                    with btn_cols[1]:
+                        if st.form_submit_button("❌ Batal"):
+                            del st.session_state.edit_major_id
+                            st.rerun()
+    else:
+        st.info("Belum ada data jurusan (alternatif). Silakan tambahkan.")
+
     conn.close()
