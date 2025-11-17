@@ -3,9 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import plotly.express as px
 
-from src.core.auth import check_login, logout
-from src.core.config import connection
-from src.ui.components.navbar_components import show_top_navbar
+from src.core.auth import require_role
+from src.core.config import connection_context
 from src.ui.components.sidebar import sidebar
 
 # # Cek login
@@ -13,11 +12,8 @@ from src.ui.components.sidebar import sidebar
 # # Database connection
 # db_manager = DatabaseManager()
 # conn = db_manager.get_connection()
-conn = connection()
 
-if st.session_state.role != 'admin':
-    st.error("Akses ditolak! Halaman ini hanya untuk admin.")
-    st.stop()
+require_role('admin')
 
 st.set_page_config(page_title="Dashboard Admin", page_icon="👨‍💼", layout="wide")
 
@@ -31,21 +27,19 @@ st.markdown("---")
 # Statistik utama
 col1, col2, col3, col4 = st.columns(4)
 
-# Total siswa
-cursor = conn.cursor()
-cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'student'")
-total_students = cursor.fetchone()[0]
+with connection_context() as conn:
+    cursor = conn.cursor()
 
-# Siswa yang sudah mengerjakan tes
-cursor.execute("SELECT COUNT(*) FROM test_results")
-completed_tests = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'student'")
+    total_students = cursor.fetchone()[0]
 
-# Siswa yang belum mengerjakan tes
-not_completed = total_students - completed_tests
+    cursor.execute("SELECT COUNT(*) FROM test_results")
+    completed_tests = cursor.fetchone()[0]
 
-# Total soal
-cursor.execute("SELECT COUNT(*) FROM questions")
-total_questions = cursor.fetchone()[0]
+    not_completed = total_students - completed_tests
+
+    cursor.execute("SELECT COUNT(*) FROM questions")
+    total_questions = cursor.fetchone()[0]
 
 with col1:
     st.metric("Total Siswa", total_students)
@@ -100,17 +94,19 @@ with col2:
 
 # Tabel siswa terbaru
 st.subheader("👥 Siswa Terbaru")
-cursor.execute('''
-    SELECT u.full_name, u.class_name, u.created_at,
-           CASE WHEN tr.id IS NOT NULL THEN 'Sudah' ELSE 'Belum' END as status_tes
-    FROM users u
-    LEFT JOIN test_results tr ON u.id = tr.student_id
-    WHERE u.role = 'student'
-    ORDER BY u.created_at DESC
-    LIMIT 10
-''')
+with connection_context() as conn:
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT u.full_name, u.class_name, u.created_at,
+               CASE WHEN tr.id IS NOT NULL THEN 'Sudah' ELSE 'Belum' END as status_tes
+        FROM users u
+        LEFT JOIN test_results tr ON u.id = tr.student_id
+        WHERE u.role = 'student'
+        ORDER BY u.created_at DESC
+        LIMIT 10
+    ''')
 
-students_data = cursor.fetchall()
+    students_data = cursor.fetchall()
 if students_data:
     df_students = pd.DataFrame(students_data, 
                               columns=['Nama Lengkap', 'Kelas', 'Tanggal Daftar', 'Status Tes'])
@@ -118,15 +114,16 @@ if students_data:
 else:
     st.info("Belum ada data siswa.")
 
-# Distribusi tipe Holland (jika ada hasil tes)
 if completed_tests > 0:
     st.subheader("🎯 Distribusi Tipe Holland")
-    
-    cursor.execute('''
-        SELECT holland_scores FROM test_results
-    ''')
-    
-    holland_data = cursor.fetchall()
+
+    with connection_context() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT holland_scores FROM test_results
+        ''')
+
+        holland_data = cursor.fetchall()
     
     # Aggregate Holland scores
     holland_totals = {
@@ -147,5 +144,3 @@ if completed_tests > 0:
                         color='Tipe Holland',
                         title="Distribusi Total Skor Tipe Holland")
     st.plotly_chart(fig_holland, use_container_width=True)
-
-conn.close()

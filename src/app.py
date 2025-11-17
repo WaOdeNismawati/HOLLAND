@@ -3,6 +3,7 @@ from pathlib import Path
 
 import bcrypt
 import sqlite3
+import time
 import streamlit as st
 from streamlit_tz import streamlit_tz
 
@@ -29,6 +30,7 @@ def main():
     # Cek status login
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
+        st.session_state.last_active = None
     
     if not st.session_state.logged_in:
         show_login_page()
@@ -38,6 +40,10 @@ def main():
 def show_login_page():
     st.title("🎓 Sistem Tes Minat Bakat Siswa")
     st.markdown("---")
+
+    logout_message = st.session_state.pop('logout_message', None)
+    if logout_message:
+        st.info(logout_message)
     
     col1, col2, col3 = st.columns([1, 2, 1])
     
@@ -54,7 +60,7 @@ def show_login_page():
                     user = authenticate_user(username, password)
                     if user:
                         # Get timezone from browser
-                        timezone = streamlit_tz()
+                        browser_timezone = streamlit_tz()
 
                         st.session_state.logged_in = True
                         st.session_state.user_id = user[0]
@@ -62,7 +68,8 @@ def show_login_page():
                         st.session_state.role = user[3]
                         st.session_state.full_name = user[4]
                         st.session_state.class_name = user[5] if user[5] else ""
-                        st.session_state.timezone = timezone if timezone else 'Asia/Jakarta'
+                        st.session_state.timezone = browser_timezone if browser_timezone else 'Asia/Jakarta'
+                        st.session_state.last_active = time.time()
                         
                         st.success("Login berhasil!")
                         st.rerun()

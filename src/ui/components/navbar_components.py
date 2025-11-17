@@ -2,6 +2,8 @@ from pathlib import Path
 
 import streamlit as st
 
+from src.core.auth import logout
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 STATIC_DIR = PROJECT_ROOT / "static"
 
@@ -136,10 +138,7 @@ def show_top_navbar(role: str = "siswa"):
     # Logout button
     with cols[-1]:
         if st.button("Logout", key="nav_logout", use_container_width=True):
-            # Clear session state
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.switch_page("Home.py")
+            logout()
     
     st.markdown('</div>', unsafe_allow_html=True)
     

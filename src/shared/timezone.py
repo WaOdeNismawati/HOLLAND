@@ -1,35 +1,35 @@
 from datetime import datetime
+
 import pytz
 import streamlit as st
 
+
+DEFAULT_TIMEZONE = 'Asia/Makassar'
+
+
+def _get_session_timezone():
+    if not hasattr(st, "session_state"):
+        return DEFAULT_TIMEZONE
+    return getattr(st.session_state, 'timezone', DEFAULT_TIMEZONE)
+
+
 def convert_utc_to_local(utc_dt_str):
-    """
-    Konversi string datetime UTC ke datetime lokal yang diformat,
-    berdasarkan zona waktu dari session state.
-    """
+    """Konversi string UTC standar ke waktu lokal pengguna."""
     if not utc_dt_str:
         return None
 
-    local_tz_str = st.session_state.get('timezone', 'Asia/Makassar')
+    try:
+        utc_dt = datetime.strptime(utc_dt_str, '%Y-%m-%d %H:%M:%S')
+    except ValueError:
+        return "Format tanggal tidak valid"
+
+    utc_dt = pytz.utc.localize(utc_dt)
+    local_tz_str = _get_session_timezone()
 
     try:
-        # Konversi string ke objek datetime
-        utc_dt = datetime.strptime(utc_dt_str, '%Y-%m-%d %H:%M:%S')
-
-        # Atur timezone ke UTC
-        utc_tz = pytz.timezone('UTC+8')
-        utc_dt = utc_tz.localize(utc_dt)
-
-        # Konversi ke timezone lokal dari session state
         local_tz = pytz.timezone(local_tz_str)
-        local_dt = utc_dt.astimezone(local_tz)
-
-        # Format ke string yang mudah dibaca
-        return local_dt.strftime('%d %B %Y, %H:%M')
     except pytz.UnknownTimeZoneError:
-        # Fallback jika timezone di session state tidak valid
-        local_tz = pytz.timezone('Asia/Makassar')
-        local_dt = utc_dt.astimezone(local_tz)
-        return local_dt.strftime('%d %B %Y, %H:%M')
-    except ValueError:
-        return "Invalid Datetime Format"
+        local_tz = pytz.timezone(DEFAULT_TIMEZONE)
+
+    local_dt = utc_dt.astimezone(local_tz)
+    return local_dt.strftime('%d %B %Y, %H:%M')

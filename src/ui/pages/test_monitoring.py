@@ -4,46 +4,39 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.core.config import connection
+from src.core.auth import require_role
+from src.core.config import connection_context
+from src.ui.components.sidebar import sidebar
 
 # # Cek login
 # check_login()
 # # Database connection
 # db_manager = DatabaseManager()
 # conn = db_manager.get_connection()
-conn = connection()
 
 
-if st.session_state.role != 'admin':
-    st.error("Akses ditolak! Halaman ini hanya untuk admin.")
-    st.stop()
+require_role('admin')
 
 st.set_page_config(page_title="Monitoring Hasil Tes", page_icon="📊", layout="wide")
 
 # Sidebar
-with st.sidebar:
-    st.title("📊 Monitoring Tes")
-    st.write(f"Admin: {st.session_state.full_name}")
-    
-    if st.button("🏠 Dashboard Admin"):
-        st.switch_page("pages/admin_dashboard.py")
+sidebar(title="📊 Monitoring Tes")
 
 # Main content
 st.title("📊 Monitoring Hasil Tes")
 st.markdown("---")
 
-cursor = conn.cursor()
+with connection_context() as conn:
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT u.full_name, u.class_name, tr.top_3_types, tr.recommended_major, 
+               tr.holland_scores, tr.completed_at
+        FROM test_results tr
+        JOIN users u ON tr.student_id = u.id
+        ORDER BY tr.completed_at DESC
+    ''')
 
-# Ambil data hasil tes
-cursor.execute('''
-    SELECT u.full_name, u.class_name, tr.top_3_types, tr.recommended_major, 
-           tr.holland_scores, tr.completed_at
-    FROM test_results tr
-    JOIN users u ON tr.student_id = u.id
-    ORDER BY tr.completed_at DESC
-''')
-
-results_data = cursor.fetchall()
+    results_data = cursor.fetchall()
 
 if not results_data:
     st.info("Belum ada siswa yang menyelesaikan tes.")
@@ -249,5 +242,3 @@ if results_data:
                            title=f"Profil Holland - {student_data[0]}",
                            color='Skor', color_continuous_scale='plasma')
         st.plotly_chart(fig_student, use_container_width=True)
-
-conn.close()

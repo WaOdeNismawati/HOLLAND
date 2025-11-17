@@ -6,45 +6,43 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.core.auth import check_login
-from src.core.config import connection
+from src.core.auth import require_role
+from src.core.config import connection_context
 from src.shared.timezone import convert_utc_to_local
-
+from src.ui.components.sidebar import sidebar
 # # Cek login
 # check_login()
 # # Database connection
 # db_manager = DatabaseManager()
 # conn = db_manager.get_connection()
-conn = connection()
 
-if st.session_state.role != 'student':
-    st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
+require_role('student')
+
+session = st.session_state
+user_id = session.get('user_id')
+
+if user_id is None:
+    st.error("Sesi tidak valid. Silakan login kembali.")
     st.stop()
 
 st.set_page_config(page_title="Hasil Tes", page_icon="📊", layout="wide")
 
 # Sidebar
-with st.sidebar:
-    st.title("📊 Hasil Tes")
-    st.write(f"Siswa: {st.session_state.full_name}")
-    
-    if st.button("🏠 Kembali ke Dashboard"):
-        st.switch_page("pages/student_dashboard.py")
+sidebar(title="📊 Hasil Tes")
 
 # Main content
 st.title("📊 Hasil Tes Minat Bakat")
 st.markdown("---")
 
-cursor = conn.cursor()
+with connection_context() as conn:
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT top_3_types, recommended_major, holland_scores, anp_results, completed_at
+        FROM test_results 
+        WHERE student_id = ?
+    ''', (user_id,))
 
-# Ambil hasil tes siswa
-cursor.execute('''
-    SELECT top_3_types, recommended_major, holland_scores, anp_results, completed_at
-    FROM test_results 
-    WHERE student_id = ?
-''', (st.session_state.user_id,))
-
-result = cursor.fetchone()
+    result = cursor.fetchone()
 
 if not result:
     st.warning("⚠️ Anda belum menyelesaikan tes minat bakat.")
@@ -582,10 +580,10 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     if st.button("🔄 Ulangi Tes", use_container_width=True):
-        # Hapus hasil lama
-        cursor.execute('DELETE FROM test_results WHERE student_id = ?', (st.session_state.user_id,))
-        cursor.execute('DELETE FROM student_answers WHERE student_id = ?', (st.session_state.user_id,))
-        conn.commit()
+        with connection_context() as conn:
+            conn.execute('DELETE FROM test_results WHERE student_id = ?', (user_id,))
+            conn.execute('DELETE FROM student_answers WHERE student_id = ?', (user_id,))
+            conn.commit()
         st.switch_page("pages/student_test.py")
 
 with col2:
@@ -595,5 +593,3 @@ with col2:
 with col3:
     if st.button("🏠 Dashboard", use_container_width=True):
         st.switch_page("pages/student_dashboard.py")
-
-conn.close()

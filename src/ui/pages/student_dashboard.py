@@ -1,41 +1,27 @@
 import streamlit as st
 
-from src.core.auth import check_login, logout
-from src.core.config import connection
+from src.core.auth import require_role
+from src.core.config import connection_context
+from src.ui.components.sidebar import sidebar
 
 # # Cek login
 # check_login()
 # db_manager = DatabaseManager()
 # conn = db_manager.get_connection()
-conn = connection()
 
+require_role('student')
 
+session = st.session_state
+user_id = session.get('user_id')
 
-if st.session_state.role != 'student':
-    st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
+if user_id is None:
+    st.error("Sesi tidak valid. Silakan login kembali.")
     st.stop()
 
 st.set_page_config(page_title="Dashboard Siswa", page_icon="🎓", layout="wide")
 
 # Sidebar
-with st.sidebar:
-    st.title("🎓 Portal Siswa")
-    st.write(f"Selamat datang, {st.session_state.full_name}")
-    
-    st.markdown("---")
-    
-    # Navigation
-    st.subheader("Menu")
-    if st.button("📝 Tes Minat Bakat", use_container_width=True):
-        st.switch_page("pages/student_test.py")
-    
-    if st.button("📊 Hasil Tes", use_container_width=True):
-        st.switch_page("pages/student_results.py")
-    
-    st.markdown("---")
-    
-    if st.button("Keluar", type="primary"):
-        logout()
+sidebar()
 
 # Main content
 st.title("🎓 Dashboard Siswa")
@@ -47,10 +33,10 @@ st.subheader("👤 Profil Siswa")
 col1, col2 = st.columns(2)
 
 with col1:
-    st.info(f"**Nama Lengkap:** {st.session_state.full_name}")
+    st.info(f"**Nama Lengkap:** {session.get('full_name', 'Pengguna')}")
 
 with col2:
-    class_name = st.session_state.class_name if st.session_state.class_name else "Tidak ada kelas"
+    class_name = session.get('class_name') or "Tidak ada kelas"
     st.info(f"**Kelas:** {class_name}")
 
 st.markdown("---")
@@ -58,14 +44,12 @@ st.markdown("---")
 # Status tes
 st.subheader("📋 Status Tes")
 
-# Cek apakah siswa sudah mengerjakan tes
-cursor = conn.cursor()
-
-cursor.execute('''
-    SELECT COUNT(*) FROM test_results WHERE student_id = ?
-''', (st.session_state.user_id,))
-
-test_completed = cursor.fetchone()[0] > 0
+with connection_context() as conn:
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT COUNT(*) FROM test_results WHERE student_id = ?
+    ''', (user_id,))
+    test_completed = cursor.fetchone()[0] > 0
 
 col1, col2 = st.columns([1, 2])
 
@@ -119,14 +103,15 @@ with st.expander("Cara Mengerjakan Tes"):
     4. **Selesaikan semua soal** untuk mendapatkan hasil yang akurat
     """)
 
-# Statistik soal
-cursor.execute("SELECT COUNT(*) FROM questions")
-total_questions = cursor.fetchone()[0]
+with connection_context() as conn:
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM questions")
+    total_questions = cursor.fetchone()[0]
 
-cursor.execute('''
-    SELECT COUNT(*) FROM student_answers WHERE student_id = ?
-''', (st.session_state.user_id,))
-answered_questions = cursor.fetchone()[0]
+    cursor.execute('''
+        SELECT COUNT(*) FROM student_answers WHERE student_id = ?
+    ''', (user_id,))
+    answered_questions = cursor.fetchone()[0]
 
 st.markdown("---")
 st.subheader("📈 Progress Tes")
@@ -137,5 +122,3 @@ if total_questions > 0:
     st.write(f"Soal dijawab: {answered_questions} dari {total_questions} soal ({progress*100:.1f}%)")
 else:
     st.warning("Belum ada soal yang tersedia. Hubungi administrator.")
-
-conn.close()

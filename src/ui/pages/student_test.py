@@ -1,42 +1,42 @@
 import streamlit as st
 
-from src.core.auth import check_login
-from src.core.config import connection
+from src.core.auth import require_role
+from src.core.config import connection_context
 from src.domain.calculators.holland_calculator import HollandCalculator
+from src.ui.components.sidebar import sidebar
 
 # # Cek login
 # check_login()
 # # Database connection
 # db_manager = DatabaseManager()
 # conn = db_manager.get_connection()
-conn = connection()
 
-if st.session_state.role != 'student':
-    st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
+require_role('student')
+
+session = st.session_state
+user_id = session.get('user_id')
+
+if user_id is None:
+    st.error("Sesi tidak valid. Silakan login kembali.")
     st.stop()
 
 st.set_page_config(page_title="Tes Minat Bakat", page_icon="📝", layout="wide")
 
 # Sidebar
-with st.sidebar:
-    st.title("📝 Tes Minat Bakat")
-    st.write(f"Siswa: {st.session_state.full_name}")
-    
-    if st.button("🏠 Kembali ke Dashboard"):
-        st.switch_page("pages/student_dashboard.py")
+sidebar(title="📝 Tes Minat Bakat")
 
 # Main content
 st.title("📝 Tes Minat Bakat Holland")
 st.markdown("---")
 
-cursor = conn.cursor()
+with connection_context() as conn:
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT COUNT(*) FROM test_results WHERE student_id = ?
+    ''', (user_id,))
+    has_completed = cursor.fetchone()[0] > 0
 
-# Cek apakah siswa sudah mengerjakan tes
-cursor.execute('''
-    SELECT COUNT(*) FROM test_results WHERE student_id = ?
-''', (st.session_state.user_id,))
-
-if cursor.fetchone()[0] > 0:
+if has_completed:
     st.warning("⚠️ Anda sudah menyelesaikan tes ini sebelumnya.")
     col1, col2 = st.columns(2)
     with col1:
@@ -47,21 +47,23 @@ if cursor.fetchone()[0] > 0:
             st.switch_page("pages/student_dashboard.py")
     st.stop()
 
-# Ambil semua soal
-cursor.execute('''
-    SELECT id, question_text, holland_type FROM questions ORDER BY id
-''')
-questions = cursor.fetchall()
+with connection_context() as conn:
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, question_text, holland_type FROM questions ORDER BY id
+    ''')
+    questions = cursor.fetchall()
 
 if not questions:
     st.error("Tidak ada soal yang tersedia. Hubungi administrator.")
     st.stop()
 
-# Ambil jawaban yang sudah ada (jika ada)
-cursor.execute('''
-    SELECT question_id, answer FROM student_answers WHERE student_id = ?
-''', (st.session_state.user_id,))
-existing_answers = dict(cursor.fetchall())
+with connection_context() as conn:
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT question_id, answer FROM student_answers WHERE student_id = ?
+    ''', (user_id,))
+    existing_answers = dict(cursor.fetchall())
 
 st.info(f"📋 Total soal: {len(questions)} | Skala: 1 (Sangat Tidak Setuju) - 5 (Sangat Setuju)")
 
@@ -103,22 +105,22 @@ with st.form("test_form"):
 # Proses jawaban
 if submit_button:
     try:
-        # Hapus jawaban lama jika ada
-        cursor.execute('DELETE FROM student_answers WHERE student_id = ?', (st.session_state.user_id,))
-        
-        # Simpan jawaban baru
-        for question_id, answer in answers.items():
-            cursor.execute('''
-                INSERT INTO student_answers (student_id, question_id, answer)
-                VALUES (?, ?, ?)
-            ''', (st.session_state.user_id, question_id, answer))
-        
-        conn.commit()
+        with connection_context() as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM student_answers WHERE student_id = ?', (user_id,))
+
+            for question_id, answer in answers.items():
+                cursor.execute('''
+                    INSERT INTO student_answers (student_id, question_id, answer)
+                    VALUES (?, ?, ?)
+                ''', (user_id, question_id, answer))
+
+            conn.commit()
         
         # Hitung hasil menggunakan Holland Calculator
         with st.spinner("📄 Memproses hasil tes..."):
             calculator = HollandCalculator()
-            result = calculator.process_test_completion(st.session_state.user_id)
+            result = calculator.process_test_completion(user_id)
         
         st.success("🎉 Tes berhasil diselesaikan!")
         st.balloons()
