@@ -3,10 +3,16 @@ import pandas as pd
 import json
 import plotly.express as px
 from database.db_manager import DatabaseManager
-from utils.auth import check_login
+# from utils.auth import check_login
+from utils.config import connection
 
-# Cek login
-check_login()
+# # Cek login
+# check_login()
+# # Database connection
+# db_manager = DatabaseManager()
+# conn = db_manager.get_connection()
+conn = connection()
+
 
 if st.session_state.role != 'admin':
     st.error("Akses ditolak! Halaman ini hanya untuk admin.")
@@ -26,9 +32,6 @@ with st.sidebar:
 st.title("📊 Monitoring Hasil Tes")
 st.markdown("---")
 
-# Database connection
-db_manager = DatabaseManager()
-conn = db_manager.get_connection()
 cursor = conn.cursor()
 
 # Ambil data hasil tes

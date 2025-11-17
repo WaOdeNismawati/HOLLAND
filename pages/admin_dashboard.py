@@ -4,10 +4,16 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 from database.db_manager import DatabaseManager
 from utils.auth import check_login, logout
-from utils.timezone import convert_utc_to_local
+from components.navbar_components import show_top_navbar
+from components.sidebar import sidebar
+from utils.config import connection
 
-# Cek login
-check_login()
+# # Cek login
+# check_login()
+# # Database connection
+# db_manager = DatabaseManager()
+# conn = db_manager.get_connection()
+conn = connection()
 
 if st.session_state.role != 'admin':
     st.error("Akses ditolak! Halaman ini hanya untuk admin.")
@@ -16,20 +22,11 @@ if st.session_state.role != 'admin':
 st.set_page_config(page_title="Dashboard Admin", page_icon="👨‍💼", layout="wide")
 
 # Sidebar
-with st.sidebar:
-    st.title("🎓 Admin Panel")
-    st.write(f"Selamat datang, {st.session_state.full_name}")
-    
-    if st.button("Keluar", type="primary"):
-        logout()
+sidebar()
 
 # Main content
 st.title("📊 Dashboard Admin")
 st.markdown("---")
-
-# Database connection
-db_manager = DatabaseManager()
-conn = db_manager.get_connection()
 
 # Statistik utama
 col1, col2, col3, col4 = st.columns(4)
@@ -117,10 +114,6 @@ students_data = cursor.fetchall()
 if students_data:
     df_students = pd.DataFrame(students_data, 
                               columns=['Nama Lengkap', 'Kelas', 'Tanggal Daftar', 'Status Tes'])
-
-    # Konversi dan format kolom 'Tanggal Daftar'
-    df_students['Tanggal Daftar'] = df_students['Tanggal Daftar'].apply(convert_utc_to_local)
-
     st.dataframe(df_students, use_container_width=True)
 else:
     st.info("Belum ada data siswa.")

@@ -1,0 +1,291 @@
+/* ======== GLOBAL STYLING ======== */
+body {
+    margin: 0;
+    font-family: "Poppins", sans-serif;
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    min-height: 100vh;
+}
+
+/* ======== SEMBUNYIKAN SEMUA ELEMEN STREAMLIT DEFAULT ======== */
+header[data-testid="stHeader"],
+[data-testid="stToolbar"],
+.stAppToolbar,
+[data-testid="stAppDeployButton"],
+.stAppDeployButton,
+#MainMenu,
+[data-testid="stMainMenu"],
+.stMainMenu,
+footer,
+footer[data-testid="stFooter"],
+section[data-testid="stSidebar"],
+[data-testid="stSidebarNav"],
+[data-testid="collapsedControl"] {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+}
+
+/* ======== CONTAINER ADJUST ======== */
+[data-testid="stAppViewContainer"] {
+    padding-top: 0 !important;
+    background: transparent;
+}
+
+.main .block-container {
+    padding-top: 90px !important;
+    max-width: 100% !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+}
+
+.main {
+    padding: 0 !important;
+}
+
+/* ======== NAVBAR ======== */
+.top-navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 70px;
+    background: linear-gradient(135deg, #0d1b2a 0%, #1b263b 40%, #415a77 100%);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 40px;
+    box-shadow: 0 4px 20px rgba(17, 45, 78, 0.4);
+    z-index: 999999 !important;
+    border-bottom: 3px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.top-navbar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0.1) 0%, 
+        transparent 50%, 
+        rgba(255, 255, 255, 0.1) 100%);
+    pointer-events: none;
+}
+
+.top-navbar .brand {
+    font-size: 22px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+}
+
+.top-navbar .brand::before {
+    content: '🌊';
+    font-size: 26px;
+}
+
+/* ======== NAV LINKS ======== */
+.top-navbar .nav-links {
+    display: flex;
+    gap: 35px;
+    align-items: center;
+    z-index: 1;
+}
+
+.top-navbar .nav-links a {
+    color: rgba(255, 255, 255, 0.85);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 15px;
+    position: relative;
+    transition: all 0.3s ease;
+    padding: 5px 0;
+}
+
+.top-navbar .nav-links a::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #a2d2ff, #64b5f6);
+    transition: width 0.3s ease;
+    border-radius: 2px;
+}
+
+.top-navbar .nav-links a:hover::after {
+    width: 100%;
+}
+
+.top-navbar .nav-links a:hover {
+    color: #ffffff;
+    transform: translateY(-2px);
+}
+
+.top-navbar .nav-links a.active {
+    color: #bbdefb;
+    font-weight: 700;
+    text-shadow: 0 0 10px rgba(173, 216, 230, 0.6);
+}
+
+.top-navbar .nav-links a.active::after {
+    width: 100%;
+}
+
+/* ======== LOGOUT BUTTON ======== */
+button.logout-btn {
+    position: fixed;
+    top: 18px;
+    right: 40px;
+    background: linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1976d2 100%);
+    color: #ffffff !important;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    z-index: 999999;
+    box-shadow: 0 4px 12px rgba(25, 118, 210, 0.4);
+    font-size: 14px;
+    backdrop-filter: blur(10px);
+}
+
+button.logout-btn:hover {
+    background: linear-gradient(135deg, #1976d2 0%, #1e88e5 100%);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(21, 101, 192, 0.5);
+}
+
+/* ======== MAIN CONTAINER ======== */
+.main-container {
+    margin-top: 90px;
+    padding: 30px;
+    min-height: calc(100vh - 90px);
+}
+
+/* ======== CARD STYLING ======== */
+.stMetric,
+[data-testid="metric-container"] {
+    background: linear-gradient(135deg, #ffffff 0%, #e3f2fd 100%);
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(25, 118, 210, 0.1);
+    border: 1px solid rgba(21, 101, 192, 0.2);
+    transition: all 0.3s ease;
+}
+
+.stMetric:hover,
+[data-testid="metric-container"]:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 30px rgba(25, 118, 210, 0.3);
+    border-color: rgba(21, 101, 192, 0.3);
+}
+
+/* ======== BUTTON & INPUT ======== */
+.stButton > button {
+    background: linear-gradient(135deg, #1976d2, #2196f3);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(25, 118, 210, 0.3);
+}
+
+.stButton > button:hover {
+    background: linear-gradient(135deg, #0d47a1, #1976d2);
+    transform: translateY(-3px);
+}
+
+/* Input fields */
+.stTextInput > div > div > input,
+.stSelectbox > div > div > div,
+.stNumberInput > div > div > input {
+    border-radius: 8px;
+    border: 2px solid #bbdefb;
+    transition: all 0.3s ease;
+    background-color: #f0f8ff;
+}
+
+.stTextInput > div > div > input:focus,
+.stSelectbox > div > div > div:focus,
+.stNumberInput > div > div > input:focus {
+    border-color: #42a5f5;
+    box-shadow: 0 0 0 3px rgba(66, 165, 245, 0.2);
+}
+
+/* ======== TABLE / DATAFRAME ======== */
+[data-testid="stDataFrame"] {
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(25, 118, 210, 0.1);
+    border: 1px solid rgba(21, 101, 192, 0.15);
+}
+
+/* ======== TITLES ======== */
+h1, h2, h3 {
+    color: #0d47a1;
+    font-weight: 700;
+    text-shadow: 0 2px 4px rgba(13, 71, 161, 0.1);
+}
+
+/* ======== SCROLLBAR ======== */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+::-webkit-scrollbar-track {
+    background: #e3f2fd;
+    border-radius: 10px;
+}
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #64b5f6, #1976d2);
+    border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #42a5f5, #0d47a1);
+}
+
+/* ======== RESPONSIVE ======== */
+@media (max-width: 992px) {
+    .top-navbar {
+        flex-direction: column;
+        height: auto;
+        padding: 15px 20px;
+        gap: 15px;
+    }
+    .top-navbar .nav-links {
+        flex-wrap: wrap;
+        justify-content: center;
+        width: 100%;
+        gap: 15px;
+    }
+    button.logout-btn {
+        position: static;
+        margin-top: 10px;
+    }
+}
+
+/* ======== DECORATIVE BACKGROUND ======== */
+.main-container::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background:
+        radial-gradient(circle at 20% 50%, rgba(21, 101, 192, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(33, 150, 243, 0.08) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: -1;
+}

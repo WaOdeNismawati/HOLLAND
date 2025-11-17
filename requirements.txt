@@ -7,3 +7,4 @@ bcrypt
 scipy
 streamlit-tz
 pytz
+dotenv

@@ -1,6 +1,8 @@
 import sqlite3
+import pandas as pd
 import bcrypt
 from datetime import datetime
+
 
 class DatabaseManager:
     def __init__(self, db_path="talent_test.db"):
@@ -23,7 +25,7 @@ class DatabaseManager:
                 role TEXT NOT NULL CHECK (role IN ('admin', 'student')),
                 full_name TEXT NOT NULL,
                 class_name TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT (datetime("now", "+8 hours"))
             )
         ''')
         
@@ -33,9 +35,23 @@ class DatabaseManager:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 question_text TEXT NOT NULL,
                 holland_type TEXT NOT NULL CHECK (holland_type IN ('Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional')),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT (datetime("now", "+8 hours"))
             )
         ''')
+        # Tabel majors (alternatif jurusan)
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS majors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            Major TEXT UNIQUE NOT NULL,
+            Realistic REAL DEFAULT 0,
+            Investigative REAL DEFAULT 0,
+            Artistic REAL DEFAULT 0,
+            Social REAL DEFAULT 0,
+            Enterprising REAL DEFAULT 0,
+            Conventional REAL DEFAULT 0
+            )
+        ''')
+
         
         # Tabel student_answers
         cursor.execute('''
@@ -44,7 +60,7 @@ class DatabaseManager:
                 student_id INTEGER NOT NULL,
                 question_id INTEGER NOT NULL,
                 answer INTEGER NOT NULL CHECK (answer BETWEEN 1 AND 5),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT (datetime("now", "+8 hours")),
                 FOREIGN KEY (student_id) REFERENCES users (id),
                 FOREIGN KEY (question_id) REFERENCES questions (id),
                 UNIQUE(student_id, question_id)
@@ -60,7 +76,7 @@ class DatabaseManager:
                 recommended_major TEXT NOT NULL,
                 holland_scores TEXT NOT NULL,
                 anp_results TEXT,
-                completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP DEFAULT (datetime("now", "+8 hours")),
                 FOREIGN KEY (student_id) REFERENCES users (id),
                 UNIQUE(student_id)
             )

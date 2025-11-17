@@ -2,9 +2,14 @@ import streamlit as st
 from database.db_manager import DatabaseManager
 from utils.auth import check_login
 from utils.holland_calculator import HollandCalculator
+from utils.config import connection
 
-# Cek login
-check_login()
+# # Cek login
+# check_login()
+# # Database connection
+# db_manager = DatabaseManager()
+# conn = db_manager.get_connection()
+conn = connection()
 
 if st.session_state.role != 'student':
     st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
@@ -24,9 +29,6 @@ with st.sidebar:
 st.title("📝 Tes Minat Bakat Holland")
 st.markdown("---")
 
-# Database connection
-db_manager = DatabaseManager()
-conn = db_manager.get_connection()
 cursor = conn.cursor()
 
 # Cek apakah siswa sudah mengerjakan tes
@@ -114,8 +116,9 @@ if submit_button:
         conn.commit()
         
         # Hitung hasil menggunakan Holland Calculator
-        calculator = HollandCalculator()
-        result = calculator.process_test_completion(st.session_state.user_id)
+        with st.spinner("📄 Memproses hasil tes..."):
+            calculator = HollandCalculator()
+            result = calculator.process_test_completion(st.session_state.user_id)
         
         st.success("🎉 Tes berhasil diselesaikan!")
         st.balloons()
@@ -126,27 +129,97 @@ if submit_button:
         col1, col2 = st.columns(2)
         
         with col1:
+            st.write("**Holland Code:**")
+            st.info(f"**{result['holland_code']}**")
+            
             st.write("**3 Tipe Kepribadian Teratas:**")
             for i, holland_type in enumerate(result['top_3_types'], 1):
-                st.write(f"{i}. {holland_type}")
+                score = result['scores'][holland_type]
+                st.write(f"{i}. {holland_type} ({score:.3f})")
         
         with col2:
-            st.write("**Rekomendasi Jurusan Terbaik (ANP):**")
-            st.success(result['recommended_major'])
+            st.write("**Rekomendasi Jurusan Terbaik:**")
+            if result.get('recommended_major'):
+                st.success(f"🎓 {result['recommended_major']}")
+            else:
+                st.warning("Rekomendasi tidak tersedia")
             
-            # Show top 3 ANP recommendations if available
-            if 'anp_results' in result and result['anp_results']['top_5_majors']:
-                st.write("**Top 3 Pilihan Lainnya:**")
-                top_majors = result['anp_results']['top_5_majors']
-                for i, (major, data) in enumerate(top_majors[1:4], 2):  # Skip first, take next 3
-                    st.write(f"{i}. {major} ({data['final_score']:.2f})")
+            # Show top recommendations from ANP
+            if result.get('anp_results') and result['anp_results'].get('top_5_majors'):
+                st.write("**Alternatif Pilihan Lainnya:**")
+                top_5 = result['anp_results']['top_5_majors']
+                
+                # Show next 3 alternatives
+                for i, major_data in enumerate(top_5[1:4], 2):
+                    if isinstance(major_data, dict):
+                        major_name = major_data.get('major_name', 'Unknown')
+                        score = major_data.get('anp_score', 0)
+                        st.write(f"{i}. {major_name} (Score: {score:.4f})")
+                    elif isinstance(major_data, (list, tuple)) and len(major_data) >= 2:
+                        major_name = major_data[0]
+                        data = major_data[1]
+                        score = data.get('anp_score', 0)
+                        st.write(f"{i}. {major_name} (Score: {score:.4f})")
+            elif result.get('holland_filter') and result['holland_filter'].get('filtered_majors'):
+                # Fallback to Holland filter results
+                st.write("**Alternatif Pilihan Lainnya (Holland Similarity):**")
+                filtered = result['holland_filter']['filtered_majors']
+                similarity_scores = result['holland_filter'].get('similarity_scores', {})
+                
+                for i, major in enumerate(filtered[1:4], 2):
+                    sim_score = similarity_scores.get(major, 0)
+                    st.write(f"{i}. {major} (Similarity: {sim_score:.3f})")
+        
+        # Info metodologi
+        with st.expander("ℹ️ Bagaimana hasil ini dihitung?"):
+            st.write("""
+            **Metode yang digunakan:**
+            1. **Holland Code (RIASEC)**: Mengidentifikasi tipe kepribadian Anda berdasarkan 6 dimensi
+            2. **Similarity Filtering**: Menyaring jurusan yang sesuai dengan profil Holland Anda menggunakan cosine similarity
+            3. **ANP (Analytic Network Process)**: Meranking jurusan hasil filter untuk rekomendasi terbaik menggunakan analisis jaringan
+            
+            **Keunggulan metode ini:**
+            - **Akurat**: Menggabungkan teori Holland yang teruji dengan analisis multi-kriteria ANP
+            - **Efisien**: Filter Holland mengurangi kompleksitas sebelum analisis ANP
+            - **Komprehensif**: Mempertimbangkan ketergantungan dan feedback antar dimensi kepribadian
+            - **Valid**: Menggunakan consistency ratio untuk memastikan kekonsistenan penilaian
+            """)
+            
+            # Show ANP calculation details if available
+            if result.get('anp_results') and result['anp_results'].get('calculation_details'):
+                calc_details = result['anp_results']['calculation_details']
+                
+                st.write("**Detail Perhitungan ANP:**")
+                st.write(f"- Consistency Ratio: {calc_details.get('consistency_ratio', 0):.4f}")
+                st.write(f"- Status: {'Konsisten ✓' if calc_details.get('is_consistent', False) else 'Perlu review'}")
+                st.write(f"- Iterasi konvergen: {calc_details.get('iterations', 0)}")
+                st.write(f"- Dimensi supermatrix: {calc_details.get('supermatrix_size', 0)}")
+        
+        # Info Holland Filter
+        if result.get('holland_filter'):
+            holland_filter = result['holland_filter']
+            with st.expander("🔍 Detail Holland Filtering"):
+                st.write(f"**Total jurusan yang dianalisis:** {holland_filter.get('total_filtered', 0)}")
+                st.write(f"**Jurusan yang lolos filter:** {len(holland_filter.get('filtered_majors', []))}")
+                
+                if holland_filter.get('similarity_scores'):
+                    st.write("**Top 5 Similarity Scores:**")
+                    sim_scores = holland_filter['similarity_scores']
+                    sorted_sim = sorted(sim_scores.items(), key=lambda x: x[1], reverse=True)[:5]
+                    
+                    for i, (major, score) in enumerate(sorted_sim, 1):
+                        st.write(f"{i}. {major}: {score:.3f}")
         
         # Tombol untuk melihat hasil lengkap
-        if st.button("Lihat Hasil Lengkap", type="primary"):
+        st.markdown("---")
+        if st.button("📄 Lihat Hasil Lengkap & Detail Analisis ANP", type="primary", use_container_width=True):
             st.switch_page("pages/student_results.py")
             
     except Exception as e:
-        st.error(f"Terjadi kesalahan: {str(e)}")
+        st.error(f"❌ Terjadi kesalahan: {str(e)}")
+        with st.expander("🔍 Detail Error (untuk debugging)"):
+            import traceback
+            st.code(traceback.format_exc())
         conn.rollback()
 
 conn.close()

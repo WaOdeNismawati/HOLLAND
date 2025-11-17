@@ -1,9 +1,15 @@
 import streamlit as st
 from database.db_manager import DatabaseManager
 from utils.auth import check_login, logout
+from utils.config import connection
 
-# Cek login
-check_login()
+# # Cek login
+# check_login()
+# db_manager = DatabaseManager()
+# conn = db_manager.get_connection()
+conn = connection()
+
+
 
 if st.session_state.role != 'student':
     st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
@@ -53,8 +59,6 @@ st.markdown("---")
 st.subheader("📋 Status Tes")
 
 # Cek apakah siswa sudah mengerjakan tes
-db_manager = DatabaseManager()
-conn = db_manager.get_connection()
 cursor = conn.cursor()
 
 cursor.execute('''
