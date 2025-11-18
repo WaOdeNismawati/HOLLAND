@@ -1,14 +1,10 @@
 import streamlit as st
-from database.db_manager import DatabaseManager
 from utils.auth import check_login
 from utils.holland_calculator import HollandCalculator
 from utils.config import connection
 
-# # Cek login
-# check_login()
-# # Database connection
-# db_manager = DatabaseManager()
-# conn = db_manager.get_connection()
+# Cek login & koneksi database
+check_login()
 conn = connection()
 
 if st.session_state.role != 'student':

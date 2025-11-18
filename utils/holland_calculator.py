@@ -267,6 +267,7 @@ class HollandCalculator:
         
         filtered_majors = holland_filter_result['filtered_majors']
         print(f"   ✅ {len(filtered_majors)} jurusan lolos filter Holland")
+        print(filtered_majors)
         
         if filtered_majors:
             print(f"   📋 Jurusan kandidat:")

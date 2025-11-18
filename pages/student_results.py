@@ -4,16 +4,12 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-from database.db_manager import DatabaseManager
 from utils.auth import check_login
 from utils.timezone import convert_utc_to_local
 from utils.config import connection
 
-# # Cek login
-# check_login()
-# # Database connection
-# db_manager = DatabaseManager()
-# conn = db_manager.get_connection()
+# Cek login & koneksi database
+check_login()
 conn = connection()
 
 if st.session_state.role != 'student':

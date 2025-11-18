@@ -267,28 +267,27 @@ class ANPProcessor:
     # =======================
     # LIMIT SUPERMATRIX
     # =======================
-    def limit_supermatrix(self, supermatrix, max_iterations=100, tolerance=1e-6):
-        """
-        Hitung limit supermatrix hingga konvergen
-        Limit matrix = lim(k→∞) W^k
-        """
-        matrix = supermatrix.copy()
-        converged = False
+    def limit_supermatrix(self, weighted_supermatrix, max_iterations=200, tolerance=1e-8):
+        """Iterasikan weighted supermatrix hingga mencapai kondisi steady-state."""
+        matrix = weighted_supermatrix.copy()
+        prev = np.zeros_like(matrix)
         iteration = 0
-        
-        for iteration in range(max_iterations):
-            prev = matrix.copy()
-            matrix = np.dot(matrix, matrix)
-            
+        converged = False
+
+        while iteration < max_iterations:
             if np.allclose(matrix, prev, atol=tolerance):
                 converged = True
-                print(f"   ✓ Konvergen pada iterasi {iteration + 1}")
+                print(f"   ✓ Konvergen pada iterasi {iteration}")
                 break
-        
+
+            prev = matrix.copy()
+            matrix = np.dot(matrix, weighted_supermatrix)
+            iteration += 1
+
         if not converged:
             print(f"   ⚠ Tidak konvergen setelah {max_iterations} iterasi")
-        
-        return matrix, converged, iteration + 1
+
+        return matrix, converged, iteration
 
     # =======================
     # HITUNG SKOR ANP
@@ -368,9 +367,12 @@ class ANPProcessor:
         print("\n🔄 Step 5: Limit Supermatrix (Iterasi hingga konvergen)")
         limit_matrix, converged, iterations = self.limit_supermatrix(weighted_supermatrix)
         
-        # 9️⃣ Ekstrak prioritas alternatif
+        # 9️⃣ Ekstrak prioritas alternatif dengan merata-ratakan kolom kriteria
         n_criteria = len(criteria_names)
-        alternative_priorities = limit_matrix[n_criteria:, 0]
+        alternative_block = limit_matrix[n_criteria:, :n_criteria]
+        alternative_priorities = alternative_block.mean(axis=1)
+        if np.sum(alternative_priorities) > 0:
+            alternative_priorities = alternative_priorities / np.sum(alternative_priorities)
         
         print(f"\n📊 Step 6: Ekstraksi Prioritas Alternatif")
         print(f"   ✓ Prioritas {len(alternative_names)} jurusan berhasil dihitung")
