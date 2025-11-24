@@ -135,7 +135,7 @@ def show_top_navbar(role: str = "siswa"):
             # Clear session state
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
-            st.switch_page("Home.py")
+            st.switch_page("app.py")
     
     st.markdown('</div>', unsafe_allow_html=True)
     

@@ -8,7 +8,7 @@ from components.upload_csv import (
     upload_csv_soal_page,
     upload_csv_majors_page
 )
-from components.sidebar import sidebar
+from components.sidebar import render_sidebar
 from utils.config import connection
 
 HOLLAND_TYPES = [
@@ -33,9 +33,8 @@ if st.session_state.role != 'admin':
     st.stop()
 
 st.set_page_config(page_title="Manajemen Data", page_icon="🗃️", layout="wide")
+render_sidebar(active_page="data_management")
 
-# Sidebar
-sidebar()
 
 # ===============================
 # Main content

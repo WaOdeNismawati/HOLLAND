@@ -4,6 +4,7 @@ import json
 import plotly.express as px
 from database.db_manager import DatabaseManager
 # from utils.auth import check_login
+from components.sidebar import render_sidebar
 from utils.config import connection
 
 # # Cek login
@@ -19,14 +20,7 @@ if st.session_state.role != 'admin':
     st.stop()
 
 st.set_page_config(page_title="Monitoring Hasil Tes", page_icon="📊", layout="wide")
-
-# Sidebar
-with st.sidebar:
-    st.title("📊 Monitoring Tes")
-    st.write(f"Admin: {st.session_state.full_name}")
-    
-    if st.button("🏠 Dashboard Admin"):
-        st.switch_page("pages/admin_dashboard.py")
+render_sidebar(active_page="test_monitoring")
 
 # Main content
 st.title("📊 Monitoring Hasil Tes")

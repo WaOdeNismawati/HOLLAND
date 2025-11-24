@@ -1,6 +1,7 @@
 import streamlit as st
 from database.db_manager import DatabaseManager
 from utils.auth import check_login, logout
+from components.sidebar import render_sidebar
 from utils.config import connection
 
 # # Cek login
@@ -16,26 +17,7 @@ if st.session_state.role != 'student':
     st.stop()
 
 st.set_page_config(page_title="Dashboard Siswa", page_icon="🎓", layout="wide")
-
-# Sidebar
-with st.sidebar:
-    st.title("🎓 Portal Siswa")
-    st.write(f"Selamat datang, {st.session_state.full_name}")
-    
-    st.markdown("---")
-    
-    # Navigation
-    st.subheader("Menu")
-    if st.button("📝 Tes Minat Bakat", use_container_width=True):
-        st.switch_page("pages/student_test.py")
-    
-    if st.button("📊 Hasil Tes", use_container_width=True):
-        st.switch_page("pages/student_results.py")
-    
-    st.markdown("---")
-    
-    if st.button("Keluar", type="primary"):
-        logout()
+render_sidebar(active_page="student_dashboard")
 
 # Main content
 st.title("🎓 Dashboard Siswa")
