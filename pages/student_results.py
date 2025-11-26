@@ -5,6 +5,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 from database.db_manager import DatabaseManager
 from utils.auth import check_login
+from utils.navbar_components import show_top_navbar
+
+# Page config
+st.set_page_config(page_title="Hasil Tes", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
 
 # Cek login
 check_login()
@@ -13,18 +17,8 @@ if st.session_state.role != 'student':
     st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
     st.stop()
 
-st.set_page_config(page_title="Hasil Tes", page_icon="📊", layout="wide")
-
-# Sidebar
-with st.sidebar:
-    st.title("📊 Hasil Tes")
-    st.write(f"Siswa: {st.session_state.full_name}")
-    
-    if st.button("🏠 Kembali ke Dashboard"):
-        st.switch_page("pages/student_dashboard.py")
-    if st.button("🔄 Ulangi Tes"):
-        st.warning("Mengulangi tes akan menghapus hasil sebelumnya. Hubungi admin jika Anda yakin.")
-
+# Show navbar
+show_top_navbar(st.session_state.role)
 
 # Main content
 st.title("📊 Hasil Tes Minat Bakat Anda")

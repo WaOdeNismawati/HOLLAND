@@ -2,6 +2,10 @@ import streamlit as st
 from database.db_manager import DatabaseManager
 from utils.auth import check_login
 from utils.holland_calculator import HollandCalculator
+from utils.navbar_components import show_top_navbar
+
+# Page config
+st.set_page_config(page_title="Tes Minat Bakat", page_icon="📝", layout="wide", initial_sidebar_state="collapsed")
 
 # Cek login
 check_login()
@@ -10,15 +14,8 @@ if st.session_state.role != 'student':
     st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
     st.stop()
 
-st.set_page_config(page_title="Tes Minat Bakat", page_icon="📝", layout="wide")
-
-# Sidebar
-with st.sidebar:
-    st.title("📝 Tes Minat Bakat")
-    st.write(f"Siswa: {st.session_state.full_name}")
-    
-    if st.button("🏠 Kembali ke Dashboard"):
-        st.switch_page("pages/student_dashboard.py")
+# Show navbar
+show_top_navbar(st.session_state.role)
 
 # Main content
 st.title("📝 Tes Minat Bakat Holland")
