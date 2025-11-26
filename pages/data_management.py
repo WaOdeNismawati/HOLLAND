@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 from database.db_manager import DatabaseManager
 from utils.auth import check_login, hash_password
+from utils.navbar_components import show_top_navbar
+
+# Page config
+st.set_page_config(page_title="Manajemen Data", page_icon="🗃️", layout="wide", initial_sidebar_state="collapsed")
 
 # Cek login
 check_login()
@@ -10,15 +14,8 @@ if st.session_state.role != 'admin':
     st.error("Akses ditolak! Halaman ini hanya untuk admin.")
     st.stop()
 
-st.set_page_config(page_title="Manajemen Data", page_icon="🗃️", layout="wide")
-
-# Sidebar
-with st.sidebar:
-    st.title("🗃️ Manajemen Data")
-    st.write(f"Admin: {st.session_state.full_name}")
-    
-    if st.button("🏠 Dashboard Admin"):
-        st.switch_page("pages/admin_dashboard.py")
+# Show navbar
+show_top_navbar(st.session_state.role)
 
 # Main content
 st.title("🗃️ Manajemen Data")

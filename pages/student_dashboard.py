@@ -1,6 +1,10 @@
 import streamlit as st
 from database.db_manager import DatabaseManager
-from utils.auth import check_login, logout
+from utils.auth import check_login
+from utils.navbar_components import show_top_navbar
+
+# Page config
+st.set_page_config(page_title="Dashboard Siswa", page_icon="🎓", layout="wide", initial_sidebar_state="collapsed")
 
 # Cek login
 check_login()
@@ -9,30 +13,11 @@ if st.session_state.role != 'student':
     st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
     st.stop()
 
-st.set_page_config(page_title="Dashboard Siswa", page_icon="🎓", layout="wide")
-
-# Sidebar
-with st.sidebar:
-    st.title("🎓 Portal Siswa")
-    st.write(f"Selamat datang, {st.session_state.full_name}")
-    
-    st.markdown("---")
-    
-    # Navigation
-    st.subheader("Menu")
-    if st.button("📝 Tes Minat Bakat", use_container_width=True):
-        st.switch_page("pages/student_test.py")
-    
-    if st.button("📊 Hasil Tes", use_container_width=True):
-        st.switch_page("pages/student_results.py")
-    
-    st.markdown("---")
-    
-    if st.button("Keluar", type="primary"):
-        logout()
+# Show navbar
+show_top_navbar(st.session_state.role)
 
 # Main content
-st.title("🎓 Dashboard Siswa")
+st.title(f"🎓 Dashboard Siswa - Selamat datang, {st.session_state.full_name}")
 st.markdown("---")
 
 # Profil siswa

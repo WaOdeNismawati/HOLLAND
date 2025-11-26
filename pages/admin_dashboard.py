@@ -3,8 +3,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import plotly.express as px
 from database.db_manager import DatabaseManager
-from utils.auth import check_login, logout
+from utils.auth import check_login
+from utils.navbar_components import show_top_navbar
 from utils.timezone import convert_utc_to_local
+
+# Page config
+st.set_page_config(page_title="Dashboard Admin", page_icon="👨‍💼", layout="wide", initial_sidebar_state="collapsed")
 
 # Cek login
 check_login()
@@ -13,18 +17,11 @@ if st.session_state.role != 'admin':
     st.error("Akses ditolak! Halaman ini hanya untuk admin.")
     st.stop()
 
-st.set_page_config(page_title="Dashboard Admin", page_icon="👨‍💼", layout="wide")
-
-# Sidebar
-with st.sidebar:
-    st.title("🎓 Admin Panel")
-    st.write(f"Selamat datang, {st.session_state.full_name}")
-    
-    if st.button("Keluar", type="primary"):
-        logout()
+# Show navbar
+show_top_navbar(st.session_state.role)
 
 # Main content
-st.title("📊 Dashboard Admin")
+st.title(f"📊 Dashboard Admin - Selamat datang, {st.session_state.full_name}")
 st.markdown("---")
 
 # Database connection
