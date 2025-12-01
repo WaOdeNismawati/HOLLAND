@@ -4,9 +4,8 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 from database.db_manager import DatabaseManager
 from utils.auth import check_login, logout
-from components.sidebar import render_sidebar
 from utils.config import connection
-from components.navbar_components import show_top_navbar, load_css
+
 
 # # Cek login
 # check_login()
@@ -20,8 +19,7 @@ if st.session_state.role != 'admin':
     st.stop()
 
 st.set_page_config(page_title="Dashboard Admin", page_icon="👨‍💼", layout="wide")
-show_top_navbar ()
-load_css ()
+
 
 # Main content
 st.title("📊 Dashboard Admin")

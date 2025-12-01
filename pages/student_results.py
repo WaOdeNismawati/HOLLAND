@@ -6,7 +6,6 @@ import plotly.graph_objects as go
 import numpy as np
 from utils.auth import check_login
 from utils.timezone import convert_utc_to_local
-from components.sidebar import render_sidebar
 from utils.config import connection
 
 # Cek login & koneksi database
@@ -18,7 +17,6 @@ if st.session_state.role != 'student':
     st.stop()
 
 st.set_page_config(page_title="Hasil Tes", page_icon="📊", layout="wide")
-render_sidebar(active_page="student_results")
 
 # Main content
 st.title("📊 Hasil Tes Minat Bakat")

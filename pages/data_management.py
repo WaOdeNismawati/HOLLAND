@@ -6,9 +6,9 @@ from utils.auth import check_login, hash_password
 from components.upload_csv import (
     upload_csv_student_page,
     upload_csv_soal_page,
-    upload_csv_majors_page
+    upload_csv_majors_page,
+    save_csv_to_db_student_answers
 )
-from components.sidebar import render_sidebar
 from utils.config import connection
 
 HOLLAND_TYPES = [
@@ -33,7 +33,6 @@ if st.session_state.role != 'admin':
     st.stop()
 
 st.set_page_config(page_title="Manajemen Data", page_icon="🗃️", layout="wide")
-render_sidebar(active_page="data_management")
 
 
 # ===============================
@@ -420,4 +419,58 @@ with tab3:
     except Exception as e:
         st.error(f"Terjadi kesalahan saat memuat data jurusan: {e}")
 
+# =======================
+# 📤 UPLOAD CSV JAWABAN
+# =======================
+st.subheader("📤 Upload Jawaban Siswa (CSV/Excel)")
+
+with st.expander("ℹ️ Format File CSV", expanded=False):
+    st.markdown("""
+    **Format 1 (Menggunakan student_id):**
+```
+    student_id,question_id,answer
+    1,1,4
+    1,2,5
+    2,1,3
+```
+    
+    **Format 2 (Menggunakan username):**
+```
+    username,question_id,answer
+    siswa001,1,4
+    siswa001,2,5
+    siswa002,1,3
+```
+    
+    **Keterangan:**
+    - `student_id` atau `username`: ID atau username siswa
+    - `question_id`: ID soal (1-60)
+    - `answer`: Jawaban siswa (1-5)
+    
+    **Catatan:**
+    - File bisa berformat `.csv`, `.xls`, atau `.xlsx`
+    - Jika ada duplikat (student_id + question_id sama), data lama akan diupdate
+    - Jawaban harus dalam rentang 1-5
+    """)
+    
+    # Template download
+    st.download_button(
+        label="📥 Download Template CSV",
+        data="student_id,question_id,answer\n1,1,4\n1,2,5\n1,3,3",
+        file_name="template_jawaban_siswa.csv",
+        mime="text/csv"
+    )
+
+with st.form("upload_form_answers"):
+    uploaded_file = st.file_uploader(
+        "Pilih file CSV/Excel jawaban siswa",
+        type=["csv", "xls", "xlsx"],
+        help="Upload file berisi jawaban siswa dalam format yang sesuai"
+    )
+    submit_upload = st.form_submit_button("📤 Upload & Proses", type="primary")
+
+if submit_upload and uploaded_file:
+    save_csv_to_db_student_answers(uploaded_file)
+
+st.markdown("---")
 conn.close()

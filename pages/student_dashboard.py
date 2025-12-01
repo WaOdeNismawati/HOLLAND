@@ -1,7 +1,6 @@
 import streamlit as st
 from database.db_manager import DatabaseManager
 from utils.auth import check_login, logout
-from components.sidebar import render_sidebar
 from utils.config import connection
 
 # # Cek login
@@ -17,7 +16,6 @@ if st.session_state.role != 'student':
     st.stop()
 
 st.set_page_config(page_title="Dashboard Siswa", page_icon="🎓", layout="wide")
-render_sidebar(active_page="student_dashboard")
 
 # Main content
 st.title("🎓 Dashboard Siswa")

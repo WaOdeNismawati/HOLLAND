@@ -1,7 +1,6 @@
 import streamlit as st
 from utils.auth import check_login
 from utils.holland_calculator import HollandCalculator
-from components.sidebar import render_sidebar
 from utils.config import connection
 
 # Cek login & koneksi database
@@ -13,7 +12,7 @@ if st.session_state.role != 'student':
     st.stop()
 
 st.set_page_config(page_title="Tes Minat Bakat", page_icon="📝", layout="wide")
-render_sidebar(active_page="student_test")
+
 
 # Main content
 st.title("📝 Tes Minat Bakat Holland")

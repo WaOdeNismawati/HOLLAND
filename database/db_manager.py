@@ -115,39 +115,6 @@ class DatabaseManager:
         cursor.execute("SELECT COUNT(*) FROM questions")
         question_count = cursor.fetchone()[0]
         
-        if question_count == 0:
-            # Sample questions untuk setiap Holland type
-            sample_questions = [
-                ("Saya suka bekerja dengan tangan dan alat-alat", "Realistic"),
-                ("Saya senang memperbaiki barang-barang yang rusak", "Realistic"),
-                ("Saya tertarik dengan kegiatan outdoor dan olahraga", "Realistic"),
-                
-                ("Saya suka melakukan penelitian dan eksperimen", "Investigative"),
-                ("Saya senang memecahkan masalah yang kompleks", "Investigative"),
-                ("Saya tertarik dengan ilmu pengetahuan dan teknologi", "Investigative"),
-                
-                ("Saya suka menggambar, melukis, atau berkarya seni", "Artistic"),
-                ("Saya senang menulis cerita atau puisi", "Artistic"),
-                ("Saya tertarik dengan musik dan pertunjukan", "Artistic"),
-                
-                ("Saya suka membantu orang lain menyelesaikan masalah", "Social"),
-                ("Saya senang bekerja dalam tim dan berkolaborasi", "Social"),
-                ("Saya tertarik dengan kegiatan sosial dan kemanusiaan", "Social"),
-                
-                ("Saya suka memimpin dan mengorganisir kegiatan", "Enterprising"),
-                ("Saya senang berbicara di depan umum", "Enterprising"),
-                ("Saya tertarik dengan bisnis dan kewirausahaan", "Enterprising"),
-                
-                ("Saya suka bekerja dengan data dan angka", "Conventional"),
-                ("Saya senang mengatur dan mengelola dokumen", "Conventional"),
-                ("Saya tertarik dengan pekerjaan administrasi", "Conventional"),
-            ]
-            
-            cursor.executemany('''
-                INSERT INTO questions (question_text, holland_type)
-                VALUES (?, ?)
-            ''', sample_questions)
-        
         # Sample student
         cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'student'")
         student_count = cursor.fetchone()[0]
