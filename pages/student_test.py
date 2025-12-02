@@ -20,20 +20,13 @@ st.markdown("---")
 
 cursor = conn.cursor()
 
-# Cek apakah siswa sudah mengerjakan tes
-cursor.execute('''
-    SELECT COUNT(*) FROM test_results WHERE student_id = ?
-''', (st.session_state.user_id,))
-
+# Block test if already completed
+cursor.execute('SELECT COUNT(*) FROM test_results WHERE student_id = ?', (st.session_state.user_id,))
 if cursor.fetchone()[0] > 0:
-    st.warning("⚠️ Anda sudah menyelesaikan tes ini sebelumnya.")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Lihat Hasil Tes"):
-            st.switch_page("pages/student_results.py")
-    with col2:
-        if st.button("Kembali ke Dashboard"):
-            st.switch_page("pages/student_dashboard.py")
+    st.warning("⚠️ Anda sudah menyelesaikan tes ini.")
+    st.info("Jika Anda ingin mengambil tes kembali, silakan hubungi administrator untuk mereset hasil Anda.")
+    if st.button("Lihat Hasil Tes"):
+        st.switch_page("pages/student_results.py")
     st.stop()
 
 # Ambil semua soal

@@ -18,7 +18,7 @@ if st.session_state.role != 'student':
 st.set_page_config(page_title="Dashboard Siswa", page_icon="🎓", layout="wide")
 
 # Main content
-st.title("🎓 Dashboard Siswa")
+st.title(f"🎓 Dashboard Siswa - Selamat datang, {st.session_state.full_name}")
 st.markdown("---")
 
 # Profil siswa

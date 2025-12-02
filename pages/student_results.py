@@ -19,36 +19,32 @@ if st.session_state.role != 'student':
 st.set_page_config(page_title="Hasil Tes", page_icon="📊", layout="wide")
 
 # Main content
-st.title("📊 Hasil Tes Minat Bakat")
+st.title("📊 Hasil Tes Minat Bakat Anda")
 st.markdown("---")
 
 cursor = conn.cursor()
 
 # Ambil hasil tes siswa
 cursor.execute('''
-    SELECT top_3_types, recommended_major, holland_scores, anp_results, completed_at
+    SELECT holland_scores, anp_results, top_3_types, recommended_major, completed_at
     FROM test_results 
     WHERE student_id = ?
 ''', (st.session_state.user_id,))
 
 result = cursor.fetchone()
+conn.close()
 
 if not result:
     st.warning("⚠️ Anda belum menyelesaikan tes minat bakat.")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Mulai Tes Sekarang", type="primary"):
-            st.switch_page("pages/student_test.py")
-    with col2:
-        if st.button("Kembali ke Dashboard"):
-            st.switch_page("pages/student_dashboard.py")
+    if st.button("Mulai Tes Sekarang", type="primary"):
+        st.switch_page("pages/student_test.py")
     st.stop()
 
-# Parse hasil
-top_3_types = json.loads(result[0])
-recommended_major = result[1]
-holland_scores = json.loads(result[2])
-anp_results = json.loads(result[3]) if result[3] else None
+# Parse data
+holland_scores = json.loads(result[0])
+anp_results = json.loads(result[1]) if result[1] else {}
+top_3_types = json.loads(result[2])
+recommended_major = result[3]
 completed_at = result[4]
 
 # PENTING: Pastikan menggunakan holland_scores sebagai sumber data utama
@@ -69,14 +65,9 @@ if anp_results and isinstance(anp_results, dict):
 # Header hasil
 st.success(f"✅ Tes diselesaikan pada: {convert_utc_to_local(completed_at)}")
 
-# Rekomendasi utama dengan ANP
+# --- Tampilan Hasil ---
 st.subheader("🎯 Rekomendasi Jurusan Terbaik")
-st.markdown(f"""
-<div style="background-color: #e8f5e8; padding: 20px; border-radius: 10px; border-left: 5px solid #28a745;">
-    <h2 style="color: #155724; margin: 0;">🎓 {recommended_major}</h2>
-    <p style="color: #155724; margin: 5px 0 0 0;">Rekomendasi terbaik berdasarkan analisis ANP (Analytic Network Process)</p>
-</div>
-""", unsafe_allow_html=True)
+st.success(f"**🏆 {recommended_major}**")
 
 st.markdown("---")
 

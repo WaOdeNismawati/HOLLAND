@@ -53,7 +53,7 @@ class DatabaseManager:
         ''')
 
         
-        # Tabel student_answers
+        # Tabel student_answers - Reverted to simple, non-history version
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS student_answers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,11 +67,28 @@ class DatabaseManager:
             )
         ''')
         
-        # Tabel test_results
+        # Tabel alternatives (college majors with RIASEC weights)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS alternatives (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                major_name TEXT UNIQUE NOT NULL,
+                realistic REAL NOT NULL,
+                investigative REAL NOT NULL,
+                artistic REAL NOT NULL,
+                social REAL NOT NULL,
+                enterprising REAL NOT NULL,
+                conventional REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Tabel test_results - Reverted to one result per student
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS test_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                student_id INTEGER NOT NULL,
+                student_id INTEGER UNIQUE NOT NULL,
+                holland_scores TEXT NOT NULL,
+                anp_results TEXT,
                 top_3_types TEXT NOT NULL,
                 recommended_major TEXT NOT NULL,
                 holland_scores TEXT NOT NULL,

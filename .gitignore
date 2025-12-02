@@ -1,5 +1,10 @@
-utils/__pycache__
-database/__pycache__
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
 venv/
 
 # Database files
@@ -13,5 +18,4 @@ services/__pycache__
 database/__pycache__
 tests/__pycache__
 pages/__pycache__
-*.pyc
 .env

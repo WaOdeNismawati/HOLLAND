@@ -22,7 +22,7 @@ st.set_page_config(page_title="Dashboard Admin", page_icon="👨‍💼", layout
 
 
 # Main content
-st.title("📊 Dashboard Admin")
+st.title(f"📊 Dashboard Admin - Selamat datang, {st.session_state.full_name}")
 st.markdown("---")
 
 # Statistik utama

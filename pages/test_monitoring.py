@@ -22,7 +22,7 @@ st.set_page_config(page_title="Monitoring Hasil Tes", page_icon="📊", layout="
 
 
 # Main content
-st.title("📊 Monitoring Hasil Tes")
+st.title("📊 Monitoring Hasil Tes Siswa")
 st.markdown("---")
 
 cursor = conn.cursor()
@@ -61,12 +61,11 @@ for row in raw_results:
 
 # Statistik umum
 st.subheader("📈 Statistik Umum")
-
-col1, col2, col3, col4 = st.columns(4)
+majors = [row[3] for row in results_data]
+all_top_types = [json.loads(row[2])[0] for row in results_data if row[2] and len(json.loads(row[2])) > 0]
 
 with col1:
     st.metric("Total Hasil Tes", len(results_data))
-
 with col2:
     majors = [row['recommended_major'] for row in results_data]
     most_popular_major = max(set(majors), key=majors.count) if majors else "N/A"
@@ -84,11 +83,9 @@ with col4:
 
 st.markdown("---")
 
-# Filter dan pencarian
+# --- Filter dan Pencarian ---
 st.subheader("🔍 Filter dan Pencarian")
-
 col1, col2, col3 = st.columns(3)
-
 with col1:
     all_classes = list(set([row['class_name'] for row in results_data if row['class_name']]))
     selected_class = st.selectbox("Filter Kelas", options=['Semua'] + sorted(all_classes))
@@ -98,7 +95,6 @@ with col2:
     selected_major = st.selectbox("Filter Jurusan", options=['Semua'] + sorted(all_majors))
 
 with col3:
-    # Pencarian nama
     search_name = st.text_input("Cari Nama Siswa")
 
 # Apply filters
@@ -113,11 +109,8 @@ if selected_major != 'Semua':
 if search_name:
     filtered_data = [row for row in filtered_data if search_name.lower() in row['full_name'].lower()]
 
-st.markdown("---")
-
-# Tabel hasil tes
+# --- Tabel Hasil ---
 st.subheader("📋 Hasil Tes Siswa")
-
 if filtered_data:
     # Prepare data for display
     display_data = []
@@ -134,17 +127,7 @@ if filtered_data:
         })
     
     df_results = pd.DataFrame(display_data)
-    st.dataframe(df_results, use_container_width=True)
-    
-    # Download CSV
-    csv = df_results.to_csv(index=False)
-    st.download_button(
-        label="📥 Download Data CSV",
-        data=csv,
-        file_name="hasil_tes_minat_bakat.csv",
-        mime="text/csv"
-    )
-    
+    st.dataframe(df_results, use_container_width=True, hide_index=True)
 else:
     st.info("Tidak ada data yang sesuai dengan filter.")
 

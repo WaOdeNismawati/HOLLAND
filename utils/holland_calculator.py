@@ -25,30 +25,14 @@ class HollandCalculator:
             self.majors_data = {}
 
     # ---------------------------------
-    # 1️⃣ Hitung skor Holland (RIASEC) - FIXED!
+    # 1️⃣ Hitung skor Holland (RIASEC)
     # ---------------------------------
     def calculate_holland_scores(self, student_id):
-        """
-        Hitung skor RIASEC siswa berdasarkan jawaban dari database
-        
-        PERBAIKAN:
-        - Mengembalikan skor RAW dan NORMALIZED
-        - Normalisasi menggunakan skor maksimal TEORITIS, bukan maksimal aktual
-        - Lebih konsisten dan mudah dipahami
-        """
+        """Hitung skor RIASEC siswa berdasarkan jawaban dari database"""
         db_manager = DatabaseManager()
         conn = db_manager.get_connection()
         cursor = conn.cursor()
 
-        # Hitung jumlah soal per tipe Holland
-        cursor.execute('''
-            SELECT holland_type, COUNT(*) as count
-            FROM questions
-            GROUP BY holland_type
-        ''')
-        questions_per_type = dict(cursor.fetchall())
-
-        # Ambil jawaban siswa
         cursor.execute('''
             SELECT q.holland_type, sa.answer
             FROM student_answers sa
@@ -59,44 +43,24 @@ class HollandCalculator:
         answers = cursor.fetchall()
         conn.close()
 
-        # Inisialisasi skor RAW
-        raw_scores = {h: 0 for h in self.holland_types}
+        # Inisialisasi skor
+        scores = {h: 0 for h in self.holland_types}
         for holland_type, answer in answers:
-            raw_scores[holland_type] += answer
+            scores[holland_type] += answer
 
-        # Hitung skor MAKSIMAL TEORITIS per tipe (jumlah soal × 5)
-        max_possible_scores = {
-            h: questions_per_type.get(h, 0) * 5 
-            for h in self.holland_types
-        }
-        
-        # Normalisasi berdasarkan MAKSIMAL TEORITIS (0-1 scale)
-        normalized_scores = {}
-        for h in self.holland_types:
-            if max_possible_scores[h] > 0:
-                normalized_scores[h] = round(raw_scores[h] / max_possible_scores[h], 3)
-            else:
-                normalized_scores[h] = 0.0
-
-        print(f"\n📊 Detail Skor RIASEC:")
-        print(f"{'Tipe':<15} {'Raw':<8} {'Max':<8} {'Normalized':<12} {'Persentase'}")
-        print(f"{'='*60}")
-        for h in self.holland_types:
-            percentage = normalized_scores[h] * 100
-            print(f"{h:<15} {raw_scores[h]:<8} {max_possible_scores[h]:<8} {normalized_scores[h]:<12.3f} {percentage:.1f}%")
+        # Normalisasi ke rentang 0–1
+        max_score = max(scores.values()) if max(scores.values()) > 0 else 1
+        normalized_scores = {k: round(v / max_score, 3) for k, v in scores.items()}
 
         return normalized_scores
 
     # ---------------------------------
-    # 2️⃣ Identifikasi Holland Code - FIXED!
+    # 2️⃣ Identifikasi Holland Code
     # ---------------------------------
     def get_holland_code(self, scores):
         """
         Dapatkan Holland Code 3 huruf (misal: RIA, ISE)
         Berdasarkan 3 tipe tertinggi
-        
-        PERBAIKAN:
-        - Return juga sorted_scores untuk konsistensi tampilan
         """
         sorted_types = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         top_3 = [t[0] for t in sorted_types[:3]]
@@ -112,9 +76,7 @@ class HollandCalculator:
         }
         
         holland_code = ''.join([code_map[t] for t in top_3])
-        
-        # Return juga sorted scores untuk transparansi
-        return holland_code, top_3, sorted_types
+        return holland_code, top_3
 
     # ---------------------------------
     # 3️⃣ Filter jurusan berdasarkan Holland
@@ -129,15 +91,11 @@ class HollandCalculator:
             similarity_threshold: Threshold minimum similarity (0-1)
         
         Returns:
-            Dict dengan filtered_majors, similarity_scores, total_filtered
+            List nama jurusan yang lolos filter
         """
         if not self.majors_data:
             print("⚠️ Data jurusan kosong, mengembalikan semua.")
-            return {
-                'filtered_majors': [],
-                'similarity_scores': {},
-                'total_filtered': 0
-            }
+            return list(self.majors_data.keys()) if self.majors_data else []
 
         similarities = {}
         student_vector = np.array([student_scores[h] for h in self.holland_types])
@@ -172,18 +130,11 @@ class HollandCalculator:
         }
 
     # ---------------------------------
-    # 4️⃣ Simpan hasil ke database - FIXED!
+    # 4️⃣ Simpan hasil ke database
     # ---------------------------------
     def save_test_result(self, student_id, scores, holland_code, top_3_types, 
-                        recommended_major, anp_results=None, holland_filter=None,
-                        sorted_all_scores=None):
-        """
-        Simpan hasil tes siswa ke tabel test_results
-        
-        PERBAIKAN:
-        - Menyimpan sorted_all_scores untuk konsistensi tampilan
-        - Memastikan data yang disimpan lengkap dan konsisten
-        """
+                        recommended_major, anp_results=None, holland_filter=None):
+        """Simpan hasil tes siswa ke tabel test_results"""
         db_manager = DatabaseManager()
         conn = db_manager.get_connection()
         cursor = conn.cursor()
@@ -191,27 +142,12 @@ class HollandCalculator:
         # Hapus data lama
         cursor.execute('DELETE FROM test_results WHERE student_id = ?', (student_id,))
 
-        # Format ANP results untuk disimpan dengan struktur yang konsisten
-        anp_data_to_save = None
-        if anp_results:
-            anp_data_to_save = {
-                'student_riasec_profile': scores,  # Gunakan scores yang sama dengan holland_scores
-                'sorted_riasec_scores': sorted_all_scores,  # Tambahkan ini untuk konsistensi
-                'top_5_majors': [
-                    {
-                        'major_name': major,
-                        'anp_score': data['anp_score'],
-                        'riasec_profile': data.get('riasec_profile', {}),
-                        'criteria_weights': data.get('criteria_weights', {}),
-                        'criteria_priorities': data.get('criteria_priorities', {})
-                    }
-                    for major, data in anp_results.get('top_5_majors', [])
-                ],
-                'holland_filter': holland_filter,
-                'total_analyzed': anp_results.get('total_analyzed', 0),
-                'methodology': 'True ANP + Holland Filtering',
-                'calculation_details': anp_results.get('calculation_details', {})
-            }
+        # Gabungkan hasil Holland dan ANP
+        combined_results = {
+            'holland_code': holland_code,
+            'holland_filter': holland_filter,
+            'anp_results': anp_results
+        }
 
         cursor.execute('''
             INSERT INTO test_results (
@@ -223,7 +159,7 @@ class HollandCalculator:
             json.dumps(top_3_types),
             recommended_major if recommended_major else "Tidak ada rekomendasi",
             json.dumps(scores),
-            json.dumps(anp_data_to_save) if anp_data_to_save else None,
+            json.dumps(combined_results),
             now_wita.strftime('%Y-%m-%d %H:%M:%S')
         ))
 
@@ -231,31 +167,31 @@ class HollandCalculator:
         conn.close()
 
     # ---------------------------------
-    # 5️⃣ Proses lengkap: Holland → ANP - FIXED!
+    # 5️⃣ Proses lengkap: Holland → ANP
     # ---------------------------------
     def process_test_completion(self, student_id):
         """
         Proses lengkap sistem rekomendasi:
-        1. Hitung skor RIASEC (Holland) dengan normalisasi yang benar
+        1. Hitung skor RIASEC (Holland)
         2. Identifikasi Holland Code
         3. Filter jurusan berdasarkan similarity Holland
         4. Ranking jurusan hasil filter menggunakan ANP
-        5. Simpan hasil dengan data yang konsisten
+        5. Simpan hasil
         """
         print(f"\n{'='*60}")
-        print(f"📄 Memproses hasil tes untuk student_id: {student_id}")
+        print(f"🔄 Memproses hasil tes untuk student_id: {student_id}")
         print(f"{'='*60}")
         
-        # STEP 1: Hitung skor Holland dengan normalisasi yang benar
+        # STEP 1: Hitung skor Holland
         scores = self.calculate_holland_scores(student_id)
+        print(f"\n📊 Skor RIASEC (Normalized):")
+        for riasec, score in scores.items():
+            print(f"   {riasec:15s}: {score:.3f}")
         
-        # STEP 2: Identifikasi Holland Code dengan sorted scores
-        holland_code, top_3_types, sorted_all_scores = self.get_holland_code(scores)
-        
+        # STEP 2: Identifikasi Holland Code
+        holland_code, top_3_types = self.get_holland_code(scores)
         print(f"\n🎯 Holland Code: {holland_code}")
-        print(f"   Top 3 Types:")
-        for i, (h_type, score) in enumerate(sorted_all_scores[:3], 1):
-            print(f"   {i}. {h_type}: {score:.3f} ({score*100:.1f}%)")
+        print(f"   Top 3 Types: {', '.join(top_3_types)}")
         
         # STEP 3: Filter jurusan menggunakan Holland
         print(f"\n🔍 Filtering jurusan berdasarkan Holland similarity...")
@@ -267,45 +203,34 @@ class HollandCalculator:
         
         filtered_majors = holland_filter_result['filtered_majors']
         print(f"   ✅ {len(filtered_majors)} jurusan lolos filter Holland")
-        print(filtered_majors)
-        
-        if filtered_majors:
-            print(f"   📋 Jurusan kandidat:")
-            for i, major in enumerate(filtered_majors[:5], 1):
-                sim = holland_filter_result['similarity_scores'].get(major, 0)
-                print(f"      {i}. {major} (similarity: {sim:.3f})")
+        print(f"   📋 Jurusan kandidat:")
+        for i, major in enumerate(filtered_majors[:5], 1):
+            sim = holland_filter_result['similarity_scores'][major]
+            print(f"      {i}. {major} (similarity: {sim:.3f})")
         
         # STEP 4: Ranking menggunakan ANP
-        print(f"\n🧮 Menjalankan True ANP untuk ranking final...")
+        print(f"\n🧮 Menjalankan ANP untuk ranking final...")
         anp_results = None
         recommended_major = None
         
         try:
-            if filtered_majors:
-                anp_results = calculate_anp_ranking(scores, filtered_majors)
+            anp_results = calculate_anp_ranking(scores, filtered_majors)
+            
+            if anp_results and anp_results['ranked_majors']:
+                recommended_major = anp_results['ranked_majors'][0][0]
                 
-                if anp_results and anp_results.get('ranked_majors'):
-                    recommended_major = anp_results['ranked_majors'][0][0]
-                    
-                    print(f"\n   ✅ Top 5 Rekomendasi ANP:")
-                    for i, (major, data) in enumerate(anp_results['ranked_majors'][:5], 1):
-                        print(f"      {i}. {major}: {data['anp_score']:.6f}")
-                else:
-                    print(f"   ⚠️ ANP tidak menghasilkan ranking")
-            else:
-                print(f"   ⚠️ Tidak ada jurusan yang lolos filter Holland")
+                print(f"   ✅ Top 5 Rekomendasi ANP:")
+                for i, (major, data) in enumerate(anp_results['ranked_majors'][:5], 1):
+                    print(f"      {i}. {major}: {data['anp_score']:.4f}")
             
         except Exception as e:
             print(f"   ⚠️ Error ANP: {e}")
-            import traceback
-            traceback.print_exc()
+            # Fallback: ambil jurusan dengan similarity tertinggi
+            if filtered_majors:
+                recommended_major = filtered_majors[0]
+                print(f"   ⚠️ Menggunakan fallback (Holland top-1): {recommended_major}")
         
-        # Fallback: gunakan Holland similarity tertinggi
-        if not recommended_major and filtered_majors:
-            recommended_major = filtered_majors[0]
-            print(f"   ⚠️ Menggunakan fallback (Holland top-1): {recommended_major}")
-        
-        # STEP 5: Simpan hasil dengan data yang konsisten
+        # STEP 5: Simpan hasil
         print(f"\n💾 Menyimpan hasil ke database...")
         self.save_test_result(
             student_id, 
@@ -314,8 +239,7 @@ class HollandCalculator:
             top_3_types, 
             recommended_major, 
             anp_results,
-            holland_filter_result,
-            sorted_all_scores  # Tambahkan ini untuk konsistensi
+            holland_filter_result
         )
         
         print(f"✅ Proses selesai!")
@@ -324,7 +248,6 @@ class HollandCalculator:
         
         return {
             'scores': scores,
-            'sorted_scores': sorted_all_scores,  # Tambahkan ini
             'holland_code': holland_code,
             'top_3_types': top_3_types,
             'recommended_major': recommended_major,

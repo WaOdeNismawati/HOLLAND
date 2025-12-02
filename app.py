@@ -18,6 +18,16 @@ db_manager = DatabaseManager()
 db_manager.init_database()
 
 def main():
+    # CSS to hide the hamburger menu and footer
+    hide_streamlit_style = """
+                <style>
+                #MainMenu {visibility: hidden;}
+                footer {visibility: hidden;}
+                header {visibility: hidden;}
+                </style>
+                """
+    st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
     # Cek status login
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
