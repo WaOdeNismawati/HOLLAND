@@ -13,8 +13,18 @@ class ANPProcessor:
     def __init__(self):
         """Initialize ANP processor with RIASEC criteria and database connection"""
         self.riasec_types = ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']
-        self.criteria_weights = np.array([1/6] * 6)
         self.db = DatabaseManager()
+        self.ri_lookup = {
+            1: 0.0,
+            2: 0.0,
+            3: 0.58,
+            4: 0.90,
+            5: 1.12,
+            6: 1.24,
+            7: 1.32,
+            8: 1.41,
+            9: 1.45
+        }
 
     # =======================
     # LOAD DATA DARI DATABASE
@@ -52,9 +62,51 @@ class ANPProcessor:
         max_idx = np.argmax(eigenvalues.real)
         principal_eigenvector = eigenvectors[:, max_idx].real
         priority_vector = principal_eigenvector / np.sum(principal_eigenvector)
-        return np.abs(priority_vector)
+        return np.abs(priority_vector), float(eigenvalues[max_idx].real)
 
-    def build_supermatrix(self, riasec_scores, major_weights):
+    def build_pairwise_matrix(self, riasec_scores):
+        """Bangun matriks perbandingan berpasangan dari skor RIASEC siswa"""
+        size = len(self.riasec_types)
+        matrix = np.ones((size, size))
+
+        safe_scores = {
+            t: max(float(riasec_scores.get(t, 0.0)), 1e-4)
+            for t in self.riasec_types
+        }
+
+        for i in range(size):
+            for j in range(i + 1, size):
+                ratio = safe_scores[self.riasec_types[i]] / safe_scores[self.riasec_types[j]]
+                ratio = float(np.clip(ratio, 1/9, 9))
+                matrix[i, j] = ratio
+                matrix[j, i] = 1 / ratio
+
+        np.fill_diagonal(matrix, 1.0)
+        return matrix
+
+    def normalize_columns(self, matrix):
+        """Normalisasi setiap kolom agar jumlahnya = 1"""
+        normalized = matrix.astype(float)
+        for j in range(normalized.shape[1]):
+            col_sum = normalized[:, j].sum()
+            if col_sum > 0:
+                normalized[:, j] /= col_sum
+            else:
+                normalized[:, j] = 1.0 / normalized.shape[0]
+        return normalized
+
+    def compute_consistency_ratio(self, lambda_max, size):
+        if size <= 2:
+            return 0.0, 0.0, True
+
+        ci = (lambda_max - size) / (size - 1)
+        ri = self.ri_lookup.get(size, 1.49)
+        if ri == 0:
+            return float(ci), 0.0, True
+        cr = ci / ri
+        return float(ci), float(cr), cr < 0.1
+
+    def build_supermatrix(self, riasec_scores, major_weights, criteria_block, criteria_priorities):
         """Bangun supermatrix ANP"""
         criteria_names = self.riasec_types
         alternative_names = list(major_weights.keys())
@@ -64,9 +116,8 @@ class ANPProcessor:
         matrix_size = n_criteria + n_alternatives
         supermatrix = np.zeros((matrix_size, matrix_size))
 
-        # Hubungan antar kriteria (independen)
-        criteria_matrix = np.eye(n_criteria) * self.criteria_weights.reshape(-1, 1)
-        supermatrix[0:n_criteria, 0:n_criteria] = criteria_matrix
+        # Hubungan antar kriteria berdasarkan pairwise comparison
+        supermatrix[0:n_criteria, 0:n_criteria] = criteria_block
 
         # Hubungan alternatif terhadap kriteria (disesuaikan dengan skor siswa)
         for i, major in enumerate(alternative_names):
@@ -79,23 +130,39 @@ class ANPProcessor:
                 interaction_weight = major_profile_weight * student_strength
                 supermatrix[n_criteria + i, j] = interaction_weight
 
+        # Hubungan kriteria terhadap alternatif (feedback loop)
+        for j, major in enumerate(alternative_names):
+            for i, criterion in enumerate(criteria_names):
+                crit_weight = criteria_priorities[i] * major_weights[major][criterion]
+                supermatrix[i, n_criteria + j] = crit_weight
+
         # Normalisasi kolom
         for j in range(matrix_size):
             col_sum = np.sum(supermatrix[:, j])
             if col_sum > 0:
                 supermatrix[:, j] = supermatrix[:, j] / col_sum
+            else:
+                supermatrix[:, j] = 1.0 / matrix_size
 
         return supermatrix, criteria_names, alternative_names
 
     def limit_supermatrix(self, supermatrix, max_iterations=100, tolerance=1e-6):
         """Hitung limit supermatrix hingga konvergen"""
         matrix = supermatrix.copy()
-        for _ in range(max_iterations):
-            prev = matrix.copy()
-            matrix = np.dot(matrix, matrix)
-            if np.allclose(matrix, prev, atol=tolerance):
-                break
-        return matrix
+        for iteration in range(1, max_iterations + 1):
+            next_matrix = np.dot(matrix, supermatrix)
+            for j in range(next_matrix.shape[1]):
+                col_sum = np.sum(next_matrix[:, j])
+                if col_sum > 0:
+                    next_matrix[:, j] /= col_sum
+                else:
+                    next_matrix[:, j] = 1.0 / next_matrix.shape[0]
+
+            if np.allclose(next_matrix, matrix, atol=tolerance):
+                return next_matrix, iteration, True
+            matrix = next_matrix
+
+        return matrix, max_iterations, False
 
     def calculate_anp_scores(self, riasec_scores, filtered_majors=None):
         """
@@ -120,33 +187,75 @@ class ANPProcessor:
         if not major_map:
             raise ValueError("Tidak ada jurusan yang tersedia untuk dianalisis")
 
+        # Pairwise comparison dan bobot kriteria
+        pairwise_matrix = self.build_pairwise_matrix(riasec_scores)
+        criteria_priorities, lambda_max = self.calculate_priority(pairwise_matrix)
+        ci, cr, is_consistent = self.compute_consistency_ratio(lambda_max, len(self.riasec_types))
+        criteria_block = self.normalize_columns(pairwise_matrix)
+
         # Bangun dan proses supermatrix
-        supermatrix, criteria_names, alternative_names = self.build_supermatrix(riasec_scores, major_map)
-        limit_matrix = self.limit_supermatrix(supermatrix)
+        supermatrix, criteria_names, alternative_names = self.build_supermatrix(
+            riasec_scores,
+            major_map,
+            criteria_block,
+            criteria_priorities
+        )
+        limit_matrix, iterations, converged = self.limit_supermatrix(supermatrix)
 
         n_criteria = len(criteria_names)
-        alternative_priorities = limit_matrix[n_criteria:, 0]
+        alternative_block = limit_matrix[n_criteria:, :n_criteria]
+        if alternative_block.size == 0:
+            raise ValueError("Limit supermatrix tidak memiliki blok alternatif yang valid")
+
+        alternative_priorities = alternative_block.mean(axis=1)
+        total_priority = np.sum(alternative_priorities)
+        if total_priority > 0:
+            alternative_priorities = alternative_priorities / total_priority
+        else:
+            alternative_priorities = np.full_like(alternative_priorities, 1 / len(alternative_priorities))
 
         # Compile hasil
         major_scores = {}
         for i, major in enumerate(alternative_names):
+            contribution = {
+                criterion: float(criteria_priorities[idx] * major_map[major][criterion] * riasec_scores.get(criterion, 0))
+                for idx, criterion in enumerate(self.riasec_types)
+            }
             major_scores[major] = {
                 'anp_score': float(alternative_priorities[i]),
                 'riasec_profile': major_map[major],
-                'criteria_weights': {
-                    criterion: riasec_scores.get(criterion, 0) * major_map[major][criterion]
-                    for criterion in self.riasec_types
-                }
+                'criteria_weights': contribution
             }
 
         # Urutkan berdasarkan ANP score
         ranked = sorted(major_scores.items(), key=lambda x: x[1]['anp_score'], reverse=True)
+        top_5 = [
+            {
+                'major_name': major,
+                **data
+            }
+            for major, data in ranked[:5]
+        ]
 
         return {
             'ranked_majors': ranked,
             'total_analyzed': len(ranked),
-            'student_profile': riasec_scores,
-            'methodology': 'ANP (Analytic Network Process)'
+            'student_riasec_profile': riasec_scores,
+            'methodology': 'ANP (Analytic Network Process)',
+            'top_5_majors': top_5,
+            'calculation_details': {
+                'pairwise_matrix': pairwise_matrix.tolist(),
+                'criteria_priorities': {
+                    criterion: float(criteria_priorities[idx])
+                    for idx, criterion in enumerate(criteria_names)
+                },
+                'consistency_index': ci,
+                'consistency_ratio': cr,
+                'is_consistent': is_consistent,
+                'iterations': iterations,
+                'converged': converged,
+                'supermatrix_size': len(criteria_names) + len(alternative_names)
+            }
         }
 
 
