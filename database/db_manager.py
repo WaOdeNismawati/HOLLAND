@@ -1,22 +1,22 @@
 import sqlite3
-import pandas as pd
 import bcrypt
-from datetime import datetime
 
 
 class DatabaseManager:
     def __init__(self, db_path="talent_test.db"):
         self.db_path = db_path
-    
+
     def get_connection(self):
-        return sqlite3.connect(self.db_path)
-    
+        return sqlite3.connect(self.db_path, timeout=10, check_same_thread=False)
+
+    # ==============================
+    #  INISIALISASI DATABASE
+    # ==============================
     def init_database(self):
-        """Inisialisasi database dan tabel"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Tabel users
+        # ---------- USERS ----------
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,32 +28,33 @@ class DatabaseManager:
                 created_at TIMESTAMP DEFAULT (datetime("now", "+8 hours"))
             )
         ''')
-        
-        # Tabel questions
+
+        # ---------- QUESTIONS ----------
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS questions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 question_text TEXT NOT NULL,
-                holland_type TEXT NOT NULL CHECK (holland_type IN ('Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional')),
+                holland_type TEXT NOT NULL CHECK (holland_type IN 
+                    ('Realistic','Investigative','Artistic','Social','Enterprising','Conventional')),
                 created_at TIMESTAMP DEFAULT (datetime("now", "+8 hours"))
             )
         ''')
-        # Tabel majors (alternatif jurusan)
+
+        # ---------- MAJORS ----------
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS majors (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            Major TEXT UNIQUE NOT NULL,
-            Realistic REAL DEFAULT 0,
-            Investigative REAL DEFAULT 0,
-            Artistic REAL DEFAULT 0,
-            Social REAL DEFAULT 0,
-            Enterprising REAL DEFAULT 0,
-            Conventional REAL DEFAULT 0
+            CREATE TABLE IF NOT EXISTS majors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Major TEXT UNIQUE NOT NULL,
+                Realistic REAL DEFAULT 0,
+                Investigative REAL DEFAULT 0,
+                Artistic REAL DEFAULT 0,
+                Social REAL DEFAULT 0,
+                Enterprising REAL DEFAULT 0,
+                Conventional REAL DEFAULT 0
             )
         ''')
 
-        
-        # Tabel student_answers - Reverted to simple, non-history version
+        # ---------- STUDENT ANSWERS ----------
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS student_answers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,28 +62,13 @@ class DatabaseManager:
                 question_id INTEGER NOT NULL,
                 answer INTEGER NOT NULL CHECK (answer BETWEEN 1 AND 5),
                 created_at TIMESTAMP DEFAULT (datetime("now", "+8 hours")),
-                FOREIGN KEY (student_id) REFERENCES users (id),
-                FOREIGN KEY (question_id) REFERENCES questions (id),
+                FOREIGN KEY (student_id) REFERENCES users(id),
+                FOREIGN KEY (question_id) REFERENCES questions(id),
                 UNIQUE(student_id, question_id)
             )
         ''')
-        
-        # Tabel alternatives (college majors with RIASEC weights)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS alternatives (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                major_name TEXT UNIQUE NOT NULL,
-                realistic REAL NOT NULL,
-                investigative REAL NOT NULL,
-                artistic REAL NOT NULL,
-                social REAL NOT NULL,
-                enterprising REAL NOT NULL,
-                conventional REAL NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
 
-        # Tabel test_results - Reverted to one result per student
+        # ---------- TEST RESULTS ----------
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS test_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,54 +77,44 @@ class DatabaseManager:
                 anp_results TEXT,
                 top_3_types TEXT NOT NULL,
                 recommended_major TEXT NOT NULL,
-                holland_scores TEXT NOT NULL,
-                anp_results TEXT,
                 completed_at TIMESTAMP DEFAULT (datetime("now", "+8 hours")),
-                FOREIGN KEY (student_id) REFERENCES users (id),
-                UNIQUE(student_id)
+                FOREIGN KEY (student_id) REFERENCES users(id)
             )
         ''')
-        
-        # Add ANP column to existing table if it doesn't exist
-        try:
-            cursor.execute('ALTER TABLE test_results ADD COLUMN anp_results TEXT')
-        except:
-            # Column already exists or other error, continue
-            pass
-        
+
         conn.commit()
-        
-        # Insert default admin dan sample data
+
+        # Insert admin & sample student
         self.insert_default_data(cursor)
+
         conn.commit()
         conn.close()
     
+
+    # ==============================
+    #  INSERT DEFAULT ADMIN & STUDENT
+    # ==============================
     def insert_default_data(self, cursor):
-        """Insert data default untuk testing"""
-        
-        # Cek apakah admin sudah ada
+        # ---------- ADMIN ----------
         cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
         admin_count = cursor.fetchone()[0]
-        
+
         if admin_count == 0:
-            # Hash password untuk admin
-            admin_password = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt())
+            admin_password = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt()).decode()
+
             cursor.execute('''
-                INSERT INTO users (username, password, role, full_name)
+                INSERT OR IGNORE INTO users (username, password, role, full_name)
                 VALUES (?, ?, ?, ?)
             ''', ("admin", admin_password, "admin", "Administrator"))
-        
-        # Cek apakah questions sudah ada
-        cursor.execute("SELECT COUNT(*) FROM questions")
-        question_count = cursor.fetchone()[0]
-        
-        # Sample student
+
+        # ---------- SAMPLE STUDENT ----------
         cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'student'")
         student_count = cursor.fetchone()[0]
-        
+
         if student_count == 0:
-            student_password = bcrypt.hashpw("student123".encode('utf-8'), bcrypt.gensalt())
+            student_password = bcrypt.hashpw("student123".encode('utf-8'), bcrypt.gensalt()).decode()
+
             cursor.execute('''
-                INSERT INTO users (username, password, role, full_name, class_name)
+                INSERT OR IGNORE INTO users (username, password, role, full_name, class_name)
                 VALUES (?, ?, ?, ?, ?)
             ''', ("student1", student_password, "student", "Siswa Contoh", "XII IPA 1"))

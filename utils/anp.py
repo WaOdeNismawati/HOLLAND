@@ -1,8 +1,3 @@
-"""
-ANP (Analytic Network Process) Module for Decision Support System
-Uses Holland Code as pre-filtering criteria before ANP ranking
-"""
-
 import numpy as np
 import pandas as pd
 from scipy.linalg import eig

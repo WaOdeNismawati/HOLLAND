@@ -1,9 +1,7 @@
 import streamlit as st
-import sqlite3
-import bcrypt
 from streamlit_tz import streamlit_tz
 from database.db_manager import DatabaseManager
-from utils.auth import authenticate_user, hash_password
+from utils.auth import authenticate_user
 
 # Konfigurasi halaman
 st.set_page_config(

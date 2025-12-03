@@ -11,9 +11,8 @@ from components.upload_csv import (
     upload_csv_student_page,
     upload_csv_soal_page,
     upload_csv_majors_page,
-    save_csv_to_db_student_answers
 )
-from utils.config import connection
+from services.read_csv import save_csv_to_db_student_answers
 
 HOLLAND_TYPES = [
     'Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional'
@@ -30,13 +29,10 @@ check_login()
 # ===============================
 db_manager = DatabaseManager()
 conn = db_manager.get_connection()
-print(st.session_state)
 
 if st.session_state.role != 'admin':
     st.error("Akses ditolak! Halaman ini hanya untuk admin.")
     st.stop()
-
-st.set_page_config(page_title="Manajemen Data", page_icon="🗃️", layout="wide")
 
 
 # ===============================
@@ -60,9 +56,9 @@ with tab1:
     add_expander = st.expander("➕ Tambah Siswa", expanded=False)
     with add_expander:
         with st.form("form_add_student"):
-            new_username_input = st.text_input("Username Baru")
-            new_full_name_input = st.text_input("Nama Lengkap Baru")
-            new_class_name_input = st.text_input("Kelas Baru")
+            new_username_input = st.text_input("Username")
+            new_full_name_input = st.text_input("Nama Lengkap")
+            new_class_name_input = st.text_input("Kelas")
             new_password = st.text_input("Password Baru", type="password")
             submitted_add_student = st.form_submit_button("Simpan Siswa")
 
@@ -173,6 +169,21 @@ with tab1:
                         st.rerun()
                     except Exception as e:
                         st.error(f"Gagal menghapus siswa: {e}")
+        # Tombol hapus semua data siswa
+        st.warning("⚠️ Hati-hati! Ini akan menghapus seluruh siswa, jawaban, dan hasil tes.")
+        if st.button("🗑️ Hapus Semua Data Siswa", key="delete_all_students"):
+            try:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM student_answers")  # hapus jawaban
+                cursor.execute("DELETE FROM test_results")     # hapus hasil tes
+                cursor.execute("DELETE FROM users WHERE role='student'")  # hapus siswa
+                conn.commit()
+                cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('student_answers','test_results','users')")
+                conn.commit()
+                st.success("Seluruh data siswa berhasil dihapus!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Gagal menghapus seluruh data siswa: {e}")
 
         df_students = pd.DataFrame(students_data, columns=['ID', 'Username', 'Nama Lengkap', 'Kelas', 'Tanggal Daftar', 'Status Tes'])
         st.subheader("📋 Daftar Siswa")
@@ -210,6 +221,7 @@ with tab2:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Gagal menambahkan soal: {e}")
+                
 
     # Tampilkan data soal
     cursor = conn.cursor()
@@ -273,11 +285,29 @@ with tab2:
                     except Exception as e:
                         st.error(f"Gagal menghapus soal: {e}")
 
+        # Tombol hapus semua soal
+        st.warning("⚠️ Hati-hati! Ini akan menghapus seluruh data soal dan jawaban siswa terkait.")
+        if st.button("🗑️ Hapus Semua Data Soal", key="delete_all_questions"):
+            try:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM student_answers")  # hapus jawaban terkait
+                cursor.execute("DELETE FROM questions")  # hapus semua soal
+                conn.commit()
+                cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('student_answers','questions')")
+                conn.commit()
+                cursor.execute("VACUUM")
+                conn.commit()
+                st.success("Seluruh data soal dan jawaban terkait berhasil dihapus!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Gagal menghapus seluruh data soal: {e}")
+
         df_questions = pd.DataFrame(questions_data, columns=['ID', 'Teks Soal', 'Tipe Holland'])
         st.subheader("📋 Daftar Soal")
         st.dataframe(df_questions, use_container_width=True)
     else:
         st.info("Belum ada data soal.")
+
 
 # ===============================
 # Tab 3: Data Alternatif (Jurusan)
@@ -414,10 +444,16 @@ with tab3:
             # Tombol hapus semua data
             st.warning("⚠️ Hati-hati! Ini akan menghapus seluruh data alternatif jurusan.")
             if st.button("🗑️ Hapus Semua Data Jurusan", type="secondary"):
-                cursor.execute("DELETE FROM majors")
-                conn.commit()
-                st.success("Seluruh data jurusan berhasil dihapus!")
-                st.rerun()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM majors")
+                    conn.commit()
+                    cursor.execute("DELETE FROM sqlite_sequence WHERE name='majors'")
+                    conn.commit()
+                    st.success("Seluruh data jurusan berhasil dihapus!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Gagal menghapus seluruh data jurusan: {e}")
         else:
             st.info("Belum ada data alternatif (jurusan).")
     except Exception as e:

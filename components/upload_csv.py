@@ -57,48 +57,6 @@ def upload_csv_student_answers_page():
     st.write("📤 Unggah File CSV Jawaban Siswa")
     st.write("Silakan unggah file CSV yang berisi jawaban siswa untuk tes Holland. File ini akan disimpan ke dalam database.")
     
-    # Info format
-    with st.expander("ℹ️ Format File CSV yang Diterima", expanded=False):
-        st.markdown("""
-        **Format 1 (Menggunakan student_id):**
-```csv
-        student_id,question_id,answer
-        1,1,4
-        1,2,5
-        2,1,3
-```
-        
-        **Format 2 (Menggunakan username):**
-```csv
-        username,question_id,answer
-        siswa001,1,4
-        siswa001,2,5
-        siswa002,1,3
-```
-        
-        **Keterangan:**
-        - `student_id` atau `username`: ID atau username siswa
-        - `question_id`: ID soal (1-60)
-        - `answer`: Jawaban siswa (1-5)
-        
-        **Catatan Penting:**
-        - File bisa berformat `.csv`, `.xls`, atau `.xlsx`
-        - Jika ada duplikat (student_id + question_id sama), data lama akan di-update
-        - Jawaban harus dalam rentang 1-5
-        - Username/student_id harus terdaftar di database
-        - question_id harus valid (sesuai soal yang ada)
-        """)
-        
-        # Template download
-        template_csv = "student_id,question_id,answer\n1,1,4\n1,2,5\n1,3,3\n1,4,4\n1,5,5"
-        st.download_button(
-            label="📥 Download Template CSV",
-            data=template_csv,
-            file_name="template_jawaban_siswa.csv",
-            mime="text/csv",
-            help="Download template untuk mempermudah pengisian data"
-        )
-    
     # Form upload
     with st.form("upload_form_answers"):
         file = st.file_uploader(
