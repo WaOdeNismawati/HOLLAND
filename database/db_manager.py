@@ -8,7 +8,7 @@ class DatabaseManager:
 
     def get_connection(self):
         return sqlite3.connect(self.db_path, timeout=10, check_same_thread=False)
-
+  
     # ==============================
     #  INISIALISASI DATABASE
     # ==============================
