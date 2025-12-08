@@ -8,9 +8,7 @@ class DatabaseManager:
         self.db_path = db_path
 
     def get_connection(self):
-        conn = sqlite3.connect(self.db_path, timeout=10, check_same_thread=False)
-        conn.execute("PRAGMA foreign_keys = ON")
-        return conn
+        return sqlite3.connect(self.db_path, timeout=10, check_same_thread=False)
 
     # ==============================
     #  INISIALISASI DATABASE

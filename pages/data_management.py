@@ -63,11 +63,10 @@ with tab1:
             submitted_add_student = st.form_submit_button("Simpan Siswa")
 
         if submitted_add_student:
-            username = new_username_input.strip()
-            full_name = new_full_name_input.strip()
-            class_name = new_class_name_input.strip()
-            password = new_password.strip()
-            if not all([username, full_name, password]):
+            new_username = new_username_input.strip()
+            new_full_name = new_full_name_input.strip()
+            new_class_name = new_class_name_input.strip()
+            if not all([new_username, new_full_name, new_password]):
                 st.warning("Username, nama lengkap, dan password wajib diisi.")
             else:
                 try:
@@ -75,7 +74,7 @@ with tab1:
                     form_cursor.execute(
                         '''INSERT INTO users (username, password, role, full_name, class_name)
                            VALUES (?, ?, 'student', ?, ?)''',
-                        (username, hash_password(password), full_name, class_name)
+                        (new_username, hash_password(new_password), new_full_name, new_class_name)
                     )
                     form_cursor.execute("SELECT id FROM users WHERE username=?", (username,))
                     user_row = form_cursor.fetchone()
