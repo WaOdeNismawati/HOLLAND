@@ -230,6 +230,15 @@ def save_csv_to_db_student(file_csv):
                     INSERT INTO users (username, password, role, full_name, class_name, created_at)
                     VALUES (?, ?, 'student', ?, ?, ?)
                 """, (username, hashed_pw, full_name, class_name, now))
+                if cursor.rowcount == 1:
+                    user_id = cursor.lastrowid
+                else:
+                    cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+                    existing = cursor.fetchone()
+                    user_id = existing[0] if existing else None
+
+                if user_id:
+                    db.ensure_student_profile(cursor, user_id, full_name, class_name)
                 inserted += 1
 
             except Exception as exc_row:

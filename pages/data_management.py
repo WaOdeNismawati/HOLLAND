@@ -77,6 +77,10 @@ with tab1:
                            VALUES (?, ?, 'student', ?, ?)''',
                         (username, hash_password(password), full_name, class_name)
                     )
+                    form_cursor.execute("SELECT id FROM users WHERE username=?", (username,))
+                    user_row = form_cursor.fetchone()
+                    if user_row:
+                        db_manager.ensure_student_profile(form_cursor, user_row[0], full_name, class_name)
                     conn.commit()
                     st.success("Siswa baru berhasil ditambahkan.")
                     st.rerun()
@@ -141,6 +145,7 @@ with tab1:
                                     selected_student[0]
                                 )
                             )
+                        db_manager.update_student_profile(form_cursor, selected_student[0], updated_full_name.strip())
                         conn.commit()
                         st.success("Data siswa berhasil diperbarui.")
                         st.rerun()
