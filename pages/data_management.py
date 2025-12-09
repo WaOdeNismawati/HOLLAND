@@ -66,7 +66,8 @@ with tab1:
             new_username = new_username_input.strip()
             new_full_name = new_full_name_input.strip()
             new_class_name = new_class_name_input.strip()
-            if not all([new_username, new_full_name, new_password]):
+            new_password_value = new_password.strip()
+            if not all([new_username, new_full_name, new_password_value]):
                 st.warning("Username, nama lengkap, dan password wajib diisi.")
             else:
                 try:
@@ -74,12 +75,12 @@ with tab1:
                     form_cursor.execute(
                         '''INSERT INTO users (username, password, role, full_name, class_name)
                            VALUES (?, ?, 'student', ?, ?)''',
-                        (new_username, hash_password(new_password), new_full_name, new_class_name)
+                        (new_username, hash_password(new_password_value), new_full_name, new_class_name)
                     )
-                    form_cursor.execute("SELECT id FROM users WHERE username=?", (username,))
+                    form_cursor.execute("SELECT id, full_name, class_name FROM users WHERE username=?", (new_username,))
                     user_row = form_cursor.fetchone()
                     if user_row:
-                        db_manager.ensure_student_profile(form_cursor, user_row[0], full_name, class_name)
+                        db_manager.ensure_student_profile(form_cursor, user_row[0], new_full_name, new_class_name)
                     conn.commit()
                     st.success("Siswa baru berhasil ditambahkan.")
                     st.rerun()
@@ -209,6 +210,10 @@ with tab2:
         with st.form("form_add_question"):
             question_text = st.text_area("Teks Soal Baru")
             question_type = st.selectbox("Tipe Holland Baru", HOLLAND_TYPES)
+            difficulty_val = st.number_input("Tingkat Kesulitan (b)", value=0.0, step=0.1)
+            discrimination_val = st.number_input("Discrimination (a)", min_value=0.1, max_value=5.0, value=1.0, step=0.1)
+            guessing_val = st.number_input("Guessing (c)", min_value=0.0, max_value=0.5, value=0.2, step=0.05)
+            time_limit_val = st.number_input("Batas Waktu (detik)", min_value=15, max_value=300, value=60, step=5)
             submitted_add_question = st.form_submit_button("Simpan Soal")
 
         if submitted_add_question:
@@ -218,8 +223,17 @@ with tab2:
                 try:
                     form_cursor = conn.cursor()
                     form_cursor.execute(
-                        "INSERT INTO questions (question_text, holland_type) VALUES (?, ?)",
-                        (question_text.strip(), question_type)
+                        '''INSERT INTO questions (
+                            question_text, holland_type, difficulty, discrimination, guessing, time_limit_seconds
+                        ) VALUES (?, ?, ?, ?, ?, ?)''',
+                        (
+                            question_text.strip(),
+                            question_type,
+                            float(difficulty_val),
+                            float(discrimination_val),
+                            float(guessing_val),
+                            int(time_limit_val)
+                        )
                     )
                     conn.commit()
                     st.success("Soal baru berhasil ditambahkan.")
@@ -230,7 +244,10 @@ with tab2:
 
     # Tampilkan data soal
     cursor = conn.cursor()
-    cursor.execute('SELECT id, question_text, holland_type FROM questions ORDER BY id')
+    cursor.execute('''
+        SELECT id, question_text, holland_type, difficulty, discrimination, guessing, time_limit_seconds
+        FROM questions ORDER BY id
+    ''')
     questions_data = cursor.fetchall()
 
     if questions_data:
@@ -249,6 +266,32 @@ with tab2:
                     HOLLAND_TYPES,
                     index=HOLLAND_TYPES.index(selected_question[2])
                 )
+                updated_difficulty = st.number_input(
+                    "Tingkat Kesulitan (b) Edit",
+                    value=float(selected_question[3] or 0.0),
+                    step=0.1
+                )
+                updated_discrimination = st.number_input(
+                    "Discrimination (a) Edit",
+                    min_value=0.1,
+                    max_value=5.0,
+                    value=float(selected_question[4] or 1.0),
+                    step=0.1
+                )
+                updated_guessing = st.number_input(
+                    "Guessing (c) Edit",
+                    min_value=0.0,
+                    max_value=0.5,
+                    value=float(selected_question[5] or 0.2),
+                    step=0.05
+                )
+                updated_time_limit = st.number_input(
+                    "Batas Waktu (detik) Edit",
+                    min_value=15,
+                    max_value=300,
+                    value=int(selected_question[6] or 60),
+                    step=5
+                )
                 submitted_edit_question = st.form_submit_button("Perbarui Soal")
 
             if submitted_edit_question:
@@ -258,8 +301,18 @@ with tab2:
                     try:
                         form_cursor = conn.cursor()
                         form_cursor.execute(
-                            '''UPDATE questions SET question_text=?, holland_type=? WHERE id=?''',
-                            (updated_question_text.strip(), updated_question_type, selected_question[0])
+                            '''UPDATE questions
+                               SET question_text=?, holland_type=?, difficulty=?, discrimination=?, guessing=?, time_limit_seconds=?
+                               WHERE id=?''',
+                            (
+                                updated_question_text.strip(),
+                                updated_question_type,
+                                float(updated_difficulty),
+                                float(updated_discrimination),
+                                float(updated_guessing),
+                                int(updated_time_limit),
+                                selected_question[0]
+                            )
                         )
                         conn.commit()
                         st.success("Soal berhasil diperbarui.")
@@ -307,7 +360,10 @@ with tab2:
             except Exception as e:
                 st.error(f"Gagal menghapus seluruh data soal: {e}")
 
-        df_questions = pd.DataFrame(questions_data, columns=['ID', 'Teks Soal', 'Tipe Holland'])
+        df_questions = pd.DataFrame(
+            questions_data,
+            columns=['ID', 'Teks Soal', 'Tipe Holland', 'Difficulty', 'Discrimination', 'Guessing', 'Time Limit (s)']
+        )
         st.subheader("📋 Daftar Soal")
         st.dataframe(df_questions, use_container_width=True)
     else:

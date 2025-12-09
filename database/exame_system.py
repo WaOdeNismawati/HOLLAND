@@ -55,6 +55,25 @@ class ExamSystemDB:
         """)
 
         self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS questions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question_text TEXT NOT NULL,
+                holland_type TEXT NOT NULL CHECK (holland_type IN (
+                    'Realistic','Investigative','Artistic','Social','Enterprising','Conventional'
+                )),
+                discrimination REAL DEFAULT 1.0,
+                difficulty REAL DEFAULT 0.0,
+                guessing REAL DEFAULT 0.2,
+                time_limit_seconds INTEGER DEFAULT 60,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        self._ensure_column('questions', 'discrimination', 'REAL DEFAULT 1.0')
+        self._ensure_column('questions', 'difficulty', 'REAL DEFAULT 0.0')
+        self._ensure_column('questions', 'guessing', 'REAL DEFAULT 0.2')
+        self._ensure_column('questions', 'time_limit_seconds', 'INTEGER DEFAULT 60')
+
+        self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS majors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 Major TEXT UNIQUE NOT NULL,
@@ -73,12 +92,16 @@ class ExamSystemDB:
                 student_id INTEGER NOT NULL,
                 question_id INTEGER NOT NULL,
                 answer INTEGER NOT NULL CHECK(answer BETWEEN 1 AND 5),
+                response_time REAL,
+                question_order INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
                 FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
                 UNIQUE(student_id, question_id)
             )
         """)
+        self._ensure_column('student_answers', 'response_time', 'REAL')
+        self._ensure_column('student_answers', 'question_order', 'INTEGER')
 
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS test_results (
@@ -88,10 +111,16 @@ class ExamSystemDB:
                 anp_results TEXT,
                 top_3_types TEXT NOT NULL,
                 recommended_major TEXT NOT NULL,
+                theta REAL,
+                theta_se REAL,
+                total_items INTEGER,
                 completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
+        self._ensure_column('test_results', 'theta', 'REAL')
+        self._ensure_column('test_results', 'theta_se', 'REAL')
+        self._ensure_column('test_results', 'total_items', 'INTEGER')
 
         # Modern exam tables (namespaced to avoid conflicts with legacy tables)
         self.cursor.execute("""
