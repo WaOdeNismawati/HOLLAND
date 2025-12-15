@@ -79,50 +79,10 @@ class HollandCalculator:
         return holland_code, top_3
 
     # ---------------------------------
-    # 3️⃣ Filter jurusan berdasarkan Holland
-    # ---------------------------------
-    def filter_majors_by_holland(self, student_scores):
-        """
-        Hitung kemiripan Holland untuk SEMUA jurusan tanpa melakukan filtering.
-        Mengembalikan daftar jurusan terurut berdasarkan similarity agar
-        tetap bisa dianalisis, namun seluruh jurusan akan dipakai dalam perhitungan.
-        """
-        if not self.majors_data:
-            print("⚠️ Data jurusan kosong.")
-            return {
-                'filtered_majors': [],
-                'similarity_scores': {},
-                'total_filtered': 0
-            }
-
-        similarities = {}
-        student_vector = np.array([student_scores[h] for h in self.holland_types])
-        norm_student = np.linalg.norm(student_vector)
-
-        for major, profile in self.majors_data.items():
-            major_vector = np.array([profile[h] for h in self.holland_types])
-            norm_major = np.linalg.norm(major_vector)
-
-            if norm_student == 0 or norm_major == 0:
-                sim = 0.0
-            else:
-                sim = float(np.dot(major_vector, student_vector) / (norm_major * norm_student))
-
-            similarities[major] = round(sim, 3)
-
-        ranked = sorted(similarities.items(), key=lambda x: x[1], reverse=True)
-
-        return {
-            'filtered_majors': [major for major, _ in ranked],  # berisi SEMUA jurusan
-            'similarity_scores': dict(ranked),
-            'total_filtered': len(ranked)
-        }
-
-    # ---------------------------------
-    # 4️⃣ Simpan hasil ke database
+    # 3️⃣ Simpan hasil ke database
     # ---------------------------------
     def save_test_result(self, student_id, scores, holland_code, top_3_types, 
-                        recommended_major, anp_results=None, holland_filter=None,
+                        recommended_major, anp_results=None,
                         theta=None, theta_se=None, total_items=None):
         """Simpan hasil tes siswa ke tabel test_results"""
         db_manager = DatabaseManager()
@@ -135,7 +95,6 @@ class HollandCalculator:
         # Gabungkan hasil Holland dan ANP
         combined_results = {
             'holland_code': holland_code,
-            'holland_filter': holland_filter,
             'anp_results': anp_results
         }
 
@@ -160,16 +119,15 @@ class HollandCalculator:
         conn.close()
 
     # ---------------------------------
-    # 5️⃣ Proses lengkap: Holland → ANP
+    # 4️⃣ Proses lengkap: Holland → ANP
     # ---------------------------------
     def process_test_completion(self, student_id, theta=None, theta_se=None, total_items=None):
         """
         Proses lengkap sistem rekomendasi:
         1. Hitung skor RIASEC (Holland)
         2. Identifikasi Holland Code
-        3. Filter jurusan berdasarkan similarity Holland
-        4. Ranking jurusan hasil filter menggunakan ANP
-        5. Simpan hasil
+        3. Ranking semua jurusan menggunakan ANP
+        4. Simpan hasil
         """
         print(f"\n{'='*60}")
         print(f"🔄 Memproses hasil tes untuk student_id: {student_id}")
@@ -186,22 +144,16 @@ class HollandCalculator:
         print(f"\n🎯 Holland Code: {holland_code}")
         print(f"   Top 3 Types: {', '.join(top_3_types)}")
         
-        # STEP 3: Filter jurusan menggunakan Holland
-        print(f"\n🔍 Filtering jurusan berdasarkan Holland similarity...")
-        holland_filter_result = self.filter_majors_by_holland(scores)
-        filtered_majors = holland_filter_result['filtered_majors']
-        print(f"   ✅ {len(filtered_majors)} jurusan dianalisis (tanpa filter)")
-        print(f"   📋 Top similarity:")
-        for i, major in enumerate(filtered_majors[:5], 1):
-            sim = holland_filter_result['similarity_scores'][major]
-            print(f"      {i}. {major} (similarity: {sim:.3f})")
-        
-        # STEP 4: Ranking menggunakan ANP
-        print(f"\n🧮 Menjalankan ANP untuk ranking final...")
+        # STEP 3: Ranking menggunakan ANP
+        print(f"\n🧮 Menjalankan ANP untuk ranking semua jurusan...")
         anp_results = None
         recommended_major = None
         
+        total_majors = len(self.majors_data)
+        print(f"   📊 Total {total_majors} jurusan akan dianalisis")
+        
         try:
+            # Jalankan ANP untuk semua jurusan dari database
             anp_results = calculate_anp_ranking(scores)
             
             if anp_results and anp_results['ranked_majors']:
@@ -213,12 +165,12 @@ class HollandCalculator:
             
         except Exception as e:
             print(f"   ⚠️ Error ANP: {e}")
-            # Fallback: ambil jurusan dengan similarity tertinggi
-            if filtered_majors:
-                recommended_major = filtered_majors[0]
-                print(f"   ⚠️ Menggunakan fallback (Holland top-1): {recommended_major}")
+            # Fallback: ambil jurusan pertama dari database
+            if self.majors_data:
+                recommended_major = list(self.majors_data.keys())[0]
+                print(f"   ⚠️ Menggunakan fallback: {recommended_major}")
         
-        # STEP 5: Simpan hasil
+        # STEP 4: Simpan hasil
         print(f"\n💾 Menyimpan hasil ke database...")
         self.save_test_result(
             student_id, 
@@ -227,7 +179,6 @@ class HollandCalculator:
             top_3_types, 
             recommended_major, 
             anp_results,
-            holland_filter_result,
             theta,
             theta_se,
             total_items
@@ -242,6 +193,5 @@ class HollandCalculator:
             'holland_code': holland_code,
             'top_3_types': top_3_types,
             'recommended_major': recommended_major,
-            'holland_filter': holland_filter_result,
             'anp_results': anp_results
         }

@@ -3,12 +3,12 @@ import pandas as pd
 import json
 import plotly.express as px
 from database.db_manager import DatabaseManager
-# from utils.auth import check_login
+from utils.auth import check_login
 from utils.config import connection
 from datetime import datetime, date
 
 # Page config (letakkan dulu sebelum elemen UI lain)
-st.set_page_config(page_title="Monitoring Hasil Tes", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Monitoring Hasil Tes", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
 
 # Database connection
 # db_manager = DatabaseManager()
@@ -20,10 +20,6 @@ user_role = st.session_state.get("role", None)
 if user_role != 'admin':
     st.error("Akses ditolak! Halaman ini hanya untuk admin.")
     st.stop()
-
-# Main content
-st.title("📊 Monitoring Hasil Tes Siswa")
-st.markdown("---")
 
 cursor = conn.cursor()
 

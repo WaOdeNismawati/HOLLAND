@@ -16,12 +16,14 @@ db_manager = DatabaseManager()
 db_manager.init_database()
 
 def main():
-    # CSS to hide the hamburger menu and footer
+    # CSS to hide the hamburger menu, footer, and sidebar
     hide_streamlit_style = """
                 <style>
                 #MainMenu {visibility: hidden;}
                 footer {visibility: hidden;}
                 header {visibility: hidden;}
+                [data-testid="stSidebarNav"] {display: none;}
+                section[data-testid="stSidebar"] {display: none;}
                 </style>
                 """
     st.markdown(hide_streamlit_style, unsafe_allow_html=True)

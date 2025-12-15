@@ -3,6 +3,8 @@ from database.db_manager import DatabaseManager
 from utils.auth import check_login, logout
 from utils.config import connection
 
+st.set_page_config(page_title="Dashboard Siswa", page_icon="🎓", layout="wide", initial_sidebar_state="collapsed")
+
 # # Cek login
 # check_login()
 # db_manager = DatabaseManager()
@@ -14,12 +16,6 @@ conn = connection()
 if st.session_state.role != 'student':
     st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
     st.stop()
-
-st.set_page_config(page_title="Dashboard Siswa", page_icon="🎓", layout="wide")
-
-# Main content
-st.title(f"🎓 Dashboard Siswa - Selamat datang, {st.session_state.full_name}")
-st.markdown("---")
 
 # Profil siswa
 st.subheader("👤 Profil Siswa")

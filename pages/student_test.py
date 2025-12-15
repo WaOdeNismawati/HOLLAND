@@ -103,13 +103,13 @@ def _handle_answer_submission(engine: CATHollandEngine, question_id: int, answer
 #  Halaman Tes
 # ==============================
 check_login()
+st.set_page_config(page_title="Tes Minat Bakat", page_icon="📝", layout="wide", initial_sidebar_state="collapsed")
+
 conn = connection()
 
 if st.session_state.role != 'student':
     st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
     st.stop()
-
-st.set_page_config(page_title="Tes Minat Bakat", page_icon="📝", layout="wide")
 
 cursor = conn.cursor()
 cursor.execute('SELECT COUNT(*) FROM test_results WHERE student_id = ?', (st.session_state.user_id,))
@@ -134,9 +134,6 @@ if 'cat_test_session' not in st.session_state or \
 session_state = st.session_state['cat_test_session']
 if session_state['question_start'] is None and session_state['current_question_id']:
     session_state['question_start'] = time.time()
-
-st.title("📝 Tes Minat Bakat Holland (CAT)")
-st.markdown("---")
 
 progress = len(session_state['answers'])
 st.progress(min(1.0, progress / session_state['max_questions']))
@@ -210,14 +207,5 @@ if session_state.get('result'):
                     st.write(f"{i}. {major_data[0]} (Score: {major_data[1].get('anp_score', 0):.4f})")
 
     st.markdown("---")
-    if result.get('holland_filter'):
-        with st.expander("🔍 Detail Holland Filtering"):
-            holland_filter = result['holland_filter']
-            st.write(f"Total jurusan dianalisis: {holland_filter.get('total_filtered', 0)}")
-            if holland_filter.get('similarity_scores'):
-                st.write("Top Similarity:")
-                for major, score in list(holland_filter['similarity_scores'].items())[:5]:
-                    st.write(f"- {major}: {score:.3f}")
-
     if st.button("📄 Lihat Hasil Lengkap", type="primary", use_container_width=True):
         st.switch_page("pages/student_results.py")
