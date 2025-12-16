@@ -178,34 +178,13 @@ if anp_results and isinstance(anp_results, dict):
         
         st.markdown("---")
         
-        # Penjelasan metodologi
-        methodology = anp_results.get('methodology', 'ANP')
-        
-        if 'Hybrid' in methodology:
-            st.success("""
-            **🎯 HYBRID WEIGHTED SCORING**
-            
-            Sistem ini menggabungkan kekuatan dari dua metode:
-            
-            1. **ANP (Analytic Network Process)** untuk menghitung bobot kriteria RIASEC
-               - Menggunakan pairwise comparison
-               - Mempertimbangkan ketergantungan antar kriteria
-            
-            2. **Weighted Scoring** untuk ranking jurusan
-               - Setiap jurusan dihitung: Σ(bobot_kriteria × profil_jurusan × skor_siswa)
-               - Ditambah bonus cosine similarity (kemiripan profil)
-            
-            3. **Formula Akhir:** Hybrid Score = 80% Weighted Score + 20% Similarity
-            
-            **Keunggulan:** Akurasi tinggi (95%+), diferensiasi jelas, dan performa cepat!
-            """)
-        else:
-            st.info("""
-            **Analytic Network Process (ANP)** adalah metode pengambilan keputusan multi-kriteria yang:
-            - Mempertimbangkan ketergantungan dan feedback antar kriteria
-            - Menggunakan pairwise comparison untuk menentukan bobot
-            - Menghasilkan ranking yang lebih akurat dibanding metode sederhana
-            """)
+        # Penjelasan singkat ANP
+        st.info("""
+        **Analytic Network Process (ANP)** adalah metode pengambilan keputusan multi-kriteria yang:
+        - Mempertimbangkan ketergantungan dan feedback antar kriteria
+        - Menggunakan pairwise comparison untuk menentukan bobot
+        - Menghasilkan ranking yang lebih akurat dibanding metode sederhana
+        """)
     
     # TAB 2: Bobot Kriteria
     with tab2:
@@ -358,7 +337,6 @@ dibanding {riasec_types[1]} dengan rasio {matrix[0, 1]:.2f}:1
         st.write("### 🏆 Ranking Lengkap Semua Jurusan")
         
         top_5_majors = anp_results.get('top_5_majors', [])
-        methodology = anp_results.get('methodology', 'ANP')
         
         if top_5_majors:
             # Create comprehensive ranking table
@@ -367,34 +345,21 @@ dibanding {riasec_types[1]} dengan rasio {matrix[0, 1]:.2f}:1
             for i, major_info in enumerate(top_5_majors, 1):
                 if isinstance(major_info, dict):
                     major_name = major_info.get('major_name', 'Unknown')
-                    # Support both hybrid_score and anp_score
-                    score = major_info.get('hybrid_score', major_info.get('anp_score', 0))
-                    weighted = major_info.get('weighted_score', 0)
-                    similarity = major_info.get('similarity', 0)
+                    anp_score = major_info.get('anp_score', 0)
                 elif isinstance(major_info, (list, tuple)) and len(major_info) >= 2:
                     major_name = major_info[0]
                     data = major_info[1]
-                    score = data.get('hybrid_score', data.get('anp_score', 0))
-                    weighted = data.get('weighted_score', 0)
-                    similarity = data.get('similarity', 0)
+                    anp_score = data.get('anp_score', 0)
                 else:
                     continue
                 
-                rank_item = {
+                ranking_data.append({
                     'Rank': i,
                     'Jurusan': major_name,
-                    'Skor Final': f"{score:.6f}",
-                    'Persentase': f"{score * 100:.2f}%",
-                }
-                
-                # Add breakdown if hybrid method
-                if 'Hybrid' in methodology:
-                    rank_item['Weighted'] = f"{weighted:.3f}"
-                    rank_item['Similarity'] = f"{similarity:.3f}"
-                
-                rank_item['Rating'] = "⭐" * min(5, max(1, int((score / max(score, 1.0)) * 5)))
-                
-                ranking_data.append(rank_item)
+                    'Skor ANP': f"{anp_score:.6f}",
+                    'Persentase': f"{anp_score * 100:.3f}%",
+                    'Rating': "⭐" * min(5, max(1, int(anp_score * 20)))
+                })
             
             ranking_df = pd.DataFrame(ranking_data)
             
@@ -407,187 +372,73 @@ dibanding {riasec_types[1]} dengan rasio {matrix[0, 1]:.2f}:1
             
             # Visualisasi skor
             majors_list = [item['Jurusan'] for item in ranking_data]
-            scores_list = [float(item['Skor Final']) for item in ranking_data]
+            scores_list = [float(item['Skor ANP']) for item in ranking_data]
             
-            # Create stacked bar if hybrid method
-            if 'Hybrid' in methodology and 'Weighted' in ranking_data[0]:
-                weighted_list = [float(item['Weighted']) for item in ranking_data]
-                similarity_list = [float(item['Similarity']) for item in ranking_data]
-                
-                fig_ranking = go.Figure(data=[
-                    go.Bar(
-                        name='Weighted Score',
-                        x=[w * 0.8 for w in weighted_list],
-                        y=majors_list,
-                        orientation='h',
-                        marker=dict(color='rgb(26, 118, 255)'),
-                        text=[f"{w:.3f}" for w in weighted_list],
-                        textposition='inside'
+            fig_ranking = go.Figure(data=[
+                go.Bar(
+                    x=scores_list,
+                    y=majors_list,
+                    orientation='h',
+                    marker=dict(
+                        color=scores_list,
+                        colorscale='Viridis',
+                        showscale=True,
+                        colorbar=dict(title="Skor ANP")
                     ),
-                    go.Bar(
-                        name='Similarity Bonus',
-                        x=[s * 0.2 for s in similarity_list],
-                        y=majors_list,
-                        orientation='h',
-                        marker=dict(color='rgb(255, 153, 51)'),
-                        text=[f"{s:.3f}" for s in similarity_list],
-                        textposition='inside'
-                    )
-                ])
-                
-                fig_ranking.update_layout(
-                    barmode='stack',
-                    title="Breakdown Hybrid Score (80% Weighted + 20% Similarity)",
-                    xaxis_title="Skor Hybrid",
-                    yaxis_title="Jurusan",
-                    height=max(400, len(majors_list) * 50),
-                    margin=dict(l=150, r=100, t=50, b=50),
-                    legend=dict(x=0.7, y=1.1, orientation='h')
+                    text=[f"{score:.4f}" for score in scores_list],
+                    textposition='outside'
                 )
-            else:
-                fig_ranking = go.Figure(data=[
-                    go.Bar(
-                        x=scores_list,
-                        y=majors_list,
-                        orientation='h',
-                        marker=dict(
-                            color=scores_list,
-                            colorscale='Viridis',
-                            showscale=True,
-                            colorbar=dict(title="Skor")
-                        ),
-                        text=[f"{score:.4f}" for score in scores_list],
-                        textposition='outside'
-                    )
-                ])
-                
-                fig_ranking.update_layout(
-                    title="Distribusi Skor",
-                    xaxis_title="Skor",
-                    yaxis_title="Jurusan",
-                    height=max(400, len(majors_list) * 40),
-                    margin=dict(l=150, r=100, t=50, b=50)
-                )
+            ])
+            
+            fig_ranking.update_layout(
+                title="Distribusi Skor ANP",
+                xaxis_title="Skor ANP",
+                yaxis_title="Jurusan",
+                height=max(400, len(majors_list) * 40),
+                margin=dict(l=150, r=100, t=50, b=50)
+            )
             
             st.plotly_chart(fig_ranking, use_container_width=True)
             
             # Detail untuk jurusan teratas
             st.markdown("---")
-            st.write("### 🔍 Analisis Detail Top 5 Jurusan")
+            st.write("### 🔍 Analisis Detail Jurusan Terbaik")
             
-            # Create tabs for each top major
-            if len(top_5_majors) >= 5:
-                major_tabs = st.tabs([f"#{i+1} {(m.get('major_name') if isinstance(m, dict) else m[0])[:20]}" 
-                                     for i, m in enumerate(top_5_majors[:5])])
+            if top_5_majors:
+                top_major = top_5_majors[0]
                 
-                for tab_idx, (major_tab, major_info) in enumerate(zip(major_tabs, top_5_majors[:5])):
-                    with major_tab:
-                        if isinstance(major_info, dict):
-                            major_name = major_info.get('major_name', 'Unknown')
-                            major_data = major_info
-                        elif isinstance(major_info, (list, tuple)) and len(major_info) >= 2:
-                            major_name = major_info[0]
-                            major_data = major_info[1]
-                        else:
-                            continue
-                        
-                        st.write(f"### {major_name}")
-                        
-                        # Display scores
-                        score_col1, score_col2, score_col3 = st.columns(3)
-                        with score_col1:
-                            final_score = major_data.get('hybrid_score', major_data.get('anp_score', 0))
-                            st.metric("Skor Final", f"{final_score:.4f}")
-                        with score_col2:
-                            weighted = major_data.get('weighted_score', 0)
-                            if weighted:
-                                st.metric("Weighted Score", f"{weighted:.3f}")
-                        with score_col3:
-                            similarity = major_data.get('similarity', 0)
-                            if similarity:
-                                st.metric("Similarity", f"{similarity:.3f}")
-                        
-                        st.markdown("---")
-                        
-                        # Profile matching visualization
-                        riasec_profile = major_data.get('riasec_profile', {})
-                        if riasec_profile and holland_scores:
-                            st.write("**📊 Profile Matching Visualization**")
-                            
-                            # Create comparison data
-                            comparison_data = []
-                            for criterion in ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']:
-                                comparison_data.append({
-                                    'Kriteria': criterion,
-                                    'Skor Anda': holland_scores.get(criterion, 0),
-                                    'Profil Jurusan': riasec_profile.get(criterion, 0)
-                                })
-                            
-                            comparison_df = pd.DataFrame(comparison_data)
-                            
-                            # Create grouped bar chart
-                            fig_comparison = go.Figure()
-                            
-                            fig_comparison.add_trace(go.Bar(
-                                name='Skor Anda',
-                                x=comparison_df['Kriteria'],
-                                y=comparison_df['Skor Anda'],
-                                marker_color='rgb(26, 118, 255)'
-                            ))
-                            
-                            fig_comparison.add_trace(go.Bar(
-                                name='Profil Jurusan',
-                                x=comparison_df['Kriteria'],
-                                y=comparison_df['Profil Jurusan'],
-                                marker_color='rgb(255, 153, 51)'
-                            ))
-                            
-                            fig_comparison.update_layout(
-                                barmode='group',
-                                title=f"Kesesuaian Profil RIASEC",
-                                xaxis_title="Kriteria",
-                                yaxis_title="Skor",
-                                height=400,
-                                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
-                            )
-                            
-                            st.plotly_chart(fig_comparison, use_container_width=True)
-                        
-                        # Contribution breakdown
-                        criteria_contribution = major_data.get('criteria_contribution', major_data.get('criteria_weights', {}))
-                        if criteria_contribution:
-                            st.write("**🎯 Breakdown Kontribusi per Kriteria**")
-                            
-                            contrib_data = []
-                            for criterion, contrib in criteria_contribution.items():
-                                contrib_data.append({
-                                    'Kriteria': criterion,
-                                    'Kontribusi': contrib
-                                })
-                            
-                            contrib_df = pd.DataFrame(contrib_data).sort_values('Kontribusi', ascending=False)
-                            
-                            # Create horizontal bar chart
-                            fig_contrib = px.bar(
-                                contrib_df,
-                                y='Kriteria',
-                                x='Kontribusi',
-                                orientation='h',
-                                color='Kontribusi',
-                                color_continuous_scale='Blues',
-                                title="Kontribusi Setiap Kriteria ke Skor Final"
-                            )
-                            
-                            fig_contrib.update_layout(height=300, showlegend=False)
-                            st.plotly_chart(fig_contrib, use_container_width=True)
-                            
-                            # Show table
-                            st.write("**Detail Kontribusi:**")
-                            for _, row in contrib_df.iterrows():
-                                percentage = (row['Kontribusi'] / contrib_df['Kontribusi'].sum()) * 100
-                                st.write(f"- **{row['Kriteria']}**: {row['Kontribusi']:.6f} ({percentage:.1f}%)")
-
-st.markdown("---")
+                if isinstance(top_major, dict):
+                    top_major_name = top_major.get('major_name', 'Unknown')
+                    top_major_data = top_major
+                elif isinstance(top_major, (list, tuple)) and len(top_major) >= 2:
+                    top_major_name = top_major[0]
+                    top_major_data = top_major[1]
+                else:
+                    top_major_name = "Unknown"
+                    top_major_data = {}
+                
+                st.write(f"**Jurusan: {top_major_name}**")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("**Profil RIASEC Jurusan:**")
+                    riasec_profile = top_major_data.get('riasec_profile', {})
+                    if riasec_profile:
+                        for criterion, value in riasec_profile.items():
+                            st.write(f"- {criterion}: {value:.3f}")
+                
+                with col2:
+                    st.write("**Kontribusi Kriteria:**")
+                    criteria_weights = top_major_data.get('criteria_weights', {})
+                    if criteria_weights:
+                        sorted_contributions = sorted(
+                            criteria_weights.items(), 
+                            key=lambda x: x[1], 
+                            reverse=True
+                        )
+                        for criterion, contrib in sorted_contributions:
+                            st.write(f"- {criterion}: {contrib:.6f}")
 
 st.markdown("---")
 
@@ -701,14 +552,21 @@ with st.expander("Saran Pengembangan Karier"):
 
 # Tombol aksi
 st.markdown("---")
-col1, col2, = st.columns(3)
+col1, col2, col3 = st.columns(3)
 
 with col1:
+    if st.button("🔄 Ulangi Tes", use_container_width=True):
+        # Hapus hasil lama
+        cursor.execute('DELETE FROM test_results WHERE student_id = ?', (st.session_state.user_id,))
+        cursor.execute('DELETE FROM student_answers WHERE student_id = ?', (st.session_state.user_id,))
+        conn.commit()
+        st.switch_page("pages/student_test.py")
 
+with col2:
     if st.button("🖨️ Cetak Hasil", use_container_width=True):
         st.info("Fitur cetak akan segera tersedia!")
 
-with col2:
+with col3:
     if st.button("🏠 Dashboard", use_container_width=True):
         st.switch_page("pages/student_dashboard.py")
 

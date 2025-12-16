@@ -257,7 +257,7 @@ class ANPProcessor:
 # Fungsi utilitas
 def calculate_anp_ranking(riasec_scores, filtered_majors=None):
     """
-    Main function untuk ranking ANP (Legacy - menggunakan full ANP)
+    Main function untuk ranking ANP
     
     Args:
         riasec_scores: Skor RIASEC siswa (normalized)
@@ -265,122 +265,6 @@ def calculate_anp_ranking(riasec_scores, filtered_majors=None):
     """
     anp = ANPProcessor()
     return anp.calculate_anp_scores(riasec_scores, filtered_majors)
-
-
-def calculate_hybrid_ranking(riasec_scores, filtered_majors=None):
-    """
-    HYBRID WEIGHTED SCORING (RECOMMENDED)
-    
-    Menggabungkan kekuatan ANP untuk criteria weighting dengan 
-    simple weighted scoring untuk ranking jurusan.
-    
-    Kelebihan:
-    - Akurasi tinggi (95%+)
-    - Performa cepat (<0.1 detik)
-    - Diferensiasi jelas antar jurusan
-    - Mudah diinterpretasi
-    
-    Args:
-        riasec_scores: Normalized RIASEC scores dari siswa (dict)
-        filtered_majors: List nama jurusan (optional)
-    
-    Returns:
-        Dictionary berisi ranking jurusan dengan skor hybrid
-    """
-    anp = ANPProcessor()
-    
-    # Load data jurusan
-    all_majors = anp.load_majors_from_db()
-    if filtered_majors:
-        major_map = {k: v for k, v in all_majors.items() if k in filtered_majors}
-    else:
-        major_map = all_majors
-    
-    if not major_map:
-        raise ValueError("Tidak ada jurusan yang tersedia untuk dianalisis")
-    
-    # STEP 1: Gunakan ANP untuk menghitung bobot kriteria
-    pairwise_matrix = anp.build_pairwise_matrix(riasec_scores)
-    criteria_priorities, lambda_max = anp.calculate_priority(pairwise_matrix)
-    ci, cr, is_consistent = anp.compute_consistency_ratio(lambda_max, len(anp.riasec_types))
-    
-    # STEP 2: Hitung weighted score untuk setiap jurusan
-    major_scores = {}
-    
-    for major, profile in major_map.items():
-        # Weighted score = sum(criteria_weight × major_profile × student_score)
-        weighted_score = sum(
-            criteria_priorities[idx] * profile[criterion] * riasec_scores.get(criterion, 0)
-            for idx, criterion in enumerate(anp.riasec_types)
-        )
-        
-        # Hitung kontribusi per kriteria (untuk analisis)
-        contribution = {
-            criterion: float(
-                criteria_priorities[idx] * profile[criterion] * riasec_scores.get(criterion, 0)
-            )
-            for idx, criterion in enumerate(anp.riasec_types)
-        }
-        
-        # STEP 3: Hitung cosine similarity sebagai bonus (optional)
-        student_vector = np.array([riasec_scores[c] for c in anp.riasec_types])
-        major_vector = np.array([profile[c] for c in anp.riasec_types])
-        
-        norm_student = np.linalg.norm(student_vector)
-        norm_major = np.linalg.norm(major_vector)
-        
-        if norm_student > 0 and norm_major > 0:
-            similarity = float(np.dot(student_vector, major_vector) / (norm_student * norm_major))
-        else:
-            similarity = 0.0
-        
-        # STEP 4: Hybrid score (80% weighted + 20% similarity)
-        hybrid_score = 0.8 * weighted_score + 0.2 * similarity
-        
-        major_scores[major] = {
-            'hybrid_score': float(hybrid_score),
-            'weighted_score': float(weighted_score),
-            'similarity': float(similarity),
-            'riasec_profile': profile,
-            'criteria_contribution': contribution
-        }
-    
-    # Normalisasi hybrid scores ke rentang 0-1
-    max_score = max(data['hybrid_score'] for data in major_scores.values())
-    if max_score > 0:
-        for data in major_scores.values():
-            data['hybrid_score_normalized'] = data['hybrid_score'] / max_score
-    
-    # Urutkan berdasarkan hybrid score
-    ranked = sorted(major_scores.items(), key=lambda x: x[1]['hybrid_score'], reverse=True)
-    
-    # Compile top 5
-    top_5 = [
-        {
-            'major_name': major,
-            **data
-        }
-        for major, data in ranked[:5]
-    ]
-    
-    return {
-        'ranked_majors': ranked,
-        'total_analyzed': len(ranked),
-        'student_riasec_profile': riasec_scores,
-        'methodology': 'Hybrid (ANP Criteria Weighting + Weighted Scoring)',
-        'top_5_majors': top_5,
-        'calculation_details': {
-            'pairwise_matrix': pairwise_matrix.tolist(),
-            'criteria_priorities': {
-                criterion: float(criteria_priorities[idx])
-                for idx, criterion in enumerate(anp.riasec_types)
-            },
-            'consistency_index': ci,
-            'consistency_ratio': cr,
-            'is_consistent': is_consistent,
-            'weighting_formula': '0.8 * weighted_score + 0.2 * similarity'
-        }
-    }
 
 
 # Testing manual
