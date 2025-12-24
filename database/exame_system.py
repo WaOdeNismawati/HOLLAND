@@ -68,17 +68,9 @@ class ExamSystemDB:
                 holland_type TEXT NOT NULL CHECK (holland_type IN (
                     'Realistic','Investigative','Artistic','Social','Enterprising','Conventional'
                 )),
-                discrimination REAL DEFAULT 1.0,
-                difficulty REAL DEFAULT 0.0,
-                guessing REAL DEFAULT 0.2,
-                time_limit_seconds INTEGER DEFAULT 60,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        self._ensure_column('questions', 'discrimination', 'REAL DEFAULT 1.0')
-        self._ensure_column('questions', 'difficulty', 'REAL DEFAULT 0.0')
-        self._ensure_column('questions', 'guessing', 'REAL DEFAULT 0.2')
-        self._ensure_column('questions', 'time_limit_seconds', 'INTEGER DEFAULT 60')
 
         # 4. Majors table (Holland major compatibility scores)
         self.cursor.execute("""
@@ -109,8 +101,6 @@ class ExamSystemDB:
                 UNIQUE(student_id, question_id)
             )
         """)
-        self._ensure_column('student_answers', 'response_time', 'REAL')
-        self._ensure_column('student_answers', 'question_order', 'INTEGER')
 
         # 6. Test Results table (Holland final results)
         self.cursor.execute("""
@@ -121,16 +111,11 @@ class ExamSystemDB:
                 anp_results TEXT,
                 top_3_types TEXT NOT NULL,
                 recommended_major TEXT NOT NULL,
-                theta REAL,
-                theta_se REAL,
                 total_items INTEGER,
                 completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
-        self._ensure_column('test_results', 'theta', 'REAL')
-        self._ensure_column('test_results', 'theta_se', 'REAL')
-        self._ensure_column('test_results', 'total_items', 'INTEGER')
         
         # --- BLOK TABEL MODERN/UJIAN SEKOLAH TELAH DIHAPUS ---
         

@@ -82,8 +82,7 @@ class HollandCalculator:
     # 3️⃣ Simpan hasil ke database
     # ---------------------------------
     def save_test_result(self, student_id, scores, holland_code, top_3_types, 
-                        recommended_major, anp_results=None,
-                        theta=None, theta_se=None, total_items=None):
+                        recommended_major, anp_results=None, total_items=None):
         """Simpan hasil tes siswa ke tabel test_results"""
         db_manager = DatabaseManager()
         conn = db_manager.get_connection()
@@ -101,16 +100,14 @@ class HollandCalculator:
         cursor.execute('''
             INSERT INTO test_results (
                 student_id, top_3_types, recommended_major,
-                holland_scores, anp_results, theta, theta_se, total_items, completed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                holland_scores, anp_results, total_items, completed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (
             student_id,
             json.dumps(top_3_types),
             recommended_major if recommended_major else "Tidak ada rekomendasi",
             json.dumps(scores),
             json.dumps(combined_results),
-            theta,
-            theta_se,
             total_items,
             now_wita.strftime('%Y-%m-%d %H:%M:%S')
         ))
@@ -121,7 +118,7 @@ class HollandCalculator:
     # ---------------------------------
     # 4️⃣ Proses lengkap: Holland → Hybrid Ranking
     # ---------------------------------
-    def process_test_completion(self, student_id, theta=None, theta_se=None, total_items=None):
+    def process_test_completion(self, student_id, total_items=None):
         """
         Proses lengkap sistem rekomendasi:
         1. Hitung skor RIASEC (Holland)
@@ -185,8 +182,6 @@ class HollandCalculator:
             top_3_types, 
             recommended_major, 
             anp_results,
-            theta,
-            theta_se,
             total_items
         )
         
