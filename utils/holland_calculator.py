@@ -209,8 +209,10 @@ class HollandCalculator:
                 
                 print(f"   ✅ Top 5 Rekomendasi:")
                 for i, (major, data) in enumerate(anp_results['ranked_majors'][:5], 1):
-                    anp_score = data.get('anp_score', 0)
-                    print(f"      {i}. {major}: {anp_score:.4f}")
+                    hybrid_score = data.get('hybrid_score', data.get('anp_score', 0))
+                    weighted = data.get('weighted_score', 0)
+                    similarity = data.get('similarity', 0)
+                    print(f"      {i}. {major}: {hybrid_score:.4f} (weighted: {weighted:.3f}, sim: {similarity:.3f})")
             
         except Exception as e:
             print(f"   ⚠️ Error ANP: {e}")
