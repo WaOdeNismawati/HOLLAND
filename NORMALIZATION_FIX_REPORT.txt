@@ -1,0 +1,47 @@
+﻿NORMALIZATION FIX - SUMMARY REPORT
+===================================
+Date: 2025-12-15
+Issue: Multiple students with DIFFERENT personality profiles were getting SAME major recommendations
+
+ROOT CAUSE:
+-----------
+Major profiles in database had TOO HIGH and TOO GENERAL scores (sum > 4.0).
+Example:
+  Hubungan Masyarakat: sum=4.40 (E=1.0, S=1.0, A=0.8, etc.)
+  Perhotelan: sum=4.40 (E=1.0, S=1.0, R=0.6, etc.)
+
+This made them "generalists" that matched ALL profiles.
+
+SOLUTION APPLIED:
+-----------------
+Normalized all 45 major profiles to sum=3.0 (average 0.5 per criterion).
+This makes each major more SPECIFIC and only match relevant personality types.
+
+RESULTS:
+--------
+BEFORE:
+  Elmy (EIS)   => Hubungan Masyarakat
+  Izatil (AEI) => Hubungan Masyarakat  (SAME - WRONG!)
+  Kadek (ISC)  => Hubungan Masyarakat  (SAME - WRONG!)
+
+AFTER:
+  Elmy (EIS)   => Hubungan Internasional  (E+S match)
+  Izatil (AEI) => Desain Komunikasi Visual  (A match)
+  Kadek (ISC)  => Kedokteran  (I+S match)
+
+All recommendations now DIFFERENT and LOGICAL!
+
+FILES:
+------
+- Backup: majors_backup_20251215_213047.csv
+- Modified: exam_system.db (majors table)
+- Scripts: normalize_majors.py, validate_normalization.py
+
+NEXT STEPS:
+-----------
+Students who already took the test will need to:
+1. View their NEW recommendations (auto-calculated on page load)
+OR
+2. Admin can re-run calculations for all students with update script
+
+STATUS: FIXED AND VALIDATED

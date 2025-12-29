@@ -8,20 +8,6 @@ from utils.holland_calculator import HollandCalculator
 from utils.config import connection
 from services.cat_engine import CATHollandEngine
 from database.db_manager import DatabaseManager
-from components.sidebar import render_sidebar
-from utils.styles import apply_dark_theme
-
-st.set_page_config(page_title="Tes Minat Bakat", page_icon="📝", layout="wide", initial_sidebar_state="expanded")
-
-# Apply dark theme
-apply_dark_theme()
-
-# Cek login
-check_login()
-
-# Render sidebar
-st.session_state.current_page = 'student_test'
-render_sidebar()
 
 
 ANSWER_LABELS = {
@@ -66,9 +52,10 @@ def _finalize_test():
 
     _persist_answers(session_state)
     calculator = HollandCalculator()
-    # Proses hasil tes
     result = calculator.process_test_completion(
         session_state['student_id'],
+        theta=session_state['theta'],
+        theta_se=session_state.get('se'),
         total_items=len(session_state['answers'])
     )
     session_state['result'] = result
@@ -93,7 +80,12 @@ def _handle_answer_submission(engine: CATHollandEngine, question_id: int, answer
     })
     session_state['asked_ids'].append(question_id)
 
-    # Pilih soal berikutnya dengan urutan yang bervariasi (hindari tipe beruntun)
+    update = engine.update_theta(session_state['theta'], question, answer_value)
+    session_state['theta'] = update['theta']
+    session_state['information'] += update['information_gain']
+    session_state['theta_history'].append(update['theta'])
+    session_state['se'] = (1 / math.sqrt(session_state['information'])) if session_state['information'] > 0 else None
+
     next_question = engine.select_next_question(session_state['theta'], session_state['asked_ids'])
     if next_question:
         session_state['current_question_id'] = next_question['id']
@@ -101,8 +93,7 @@ def _handle_answer_submission(engine: CATHollandEngine, question_id: int, answer
     else:
         session_state['completed'] = True
 
-    # Cek apakah sudah selesai (semua soal dijawab)
-    if engine.should_stop(len(session_state['answers']), None):
+    if engine.should_stop(len(session_state['answers']), session_state.get('se')):
         session_state['completed'] = True
 
     st.rerun()
@@ -131,10 +122,7 @@ if cursor.fetchone()[0] > 0:
 
 conn.close()
 
-# Initialize CAT Engine untuk tes minat bakat
-# max_items=None: semua soal harus dijawab untuk hasil akurat
-# CAT digunakan untuk mengacak urutan soal agar tidak beruntun tipe yang sama
-engine = CATHollandEngine(min_items=18, max_items=None, target_se=0.35)
+engine = CATHollandEngine()
 if not engine.question_bank:
     st.error("Tidak ada soal yang tersedia. Hubungi administrator.")
     st.stop()
@@ -148,21 +136,15 @@ if session_state['question_start'] is None and session_state['current_question_i
     session_state['question_start'] = time.time()
 
 progress = len(session_state['answers'])
-total_questions = session_state['max_questions']
-st.progress(min(1.0, progress / total_questions))
+st.progress(min(1.0, progress / session_state['max_questions']))
 
-st.markdown(f"""
-### 📝 Progress Tes Minat Bakat
-**{progress} dari {total_questions} soal terjawab** ({(progress/total_questions*100):.1f}%)
-""")
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric("📊 Soal Terjawab", f"{progress}/{total_questions}")
-with col2:
-    remaining = total_questions - progress
-    st.metric("⏳ Soal Tersisa", f"{remaining}")
-with col3:
+col_info, col_controls = st.columns([3, 1])
+with col_info:
+    st.metric("Jumlah Soal Terjawab", f"{progress}")
+    st.metric("Estimasi Kemampuan (θ)", f"{session_state['theta']:.2f}")
+with col_controls:
+    se_display = session_state.get('se')
+    st.metric("Standard Error", f"{se_display:.3f}" if se_display else "-" )
     if st.button("🔄 Ulangi Tes", use_container_width=True):
         _reset_cat_session(engine)
         st.rerun()
@@ -171,25 +153,9 @@ st.markdown("---")
 
 if not session_state['completed'] and session_state['current_question_id']:
     question = engine.get_question(session_state['current_question_id'])
-    
-    # Holland type icons
-    holland_icons = {
-        'Realistic': '🔧',
-        'Investigative': '🔬',
-        'Artistic': '🎨',
-        'Social': '👥',
-        'Enterprising': '💼',
-        'Conventional': '📊'
-    }
-    
-    icon = holland_icons.get(question['holland_type'], '📌')
-    
-    st.markdown(f"""
-    ### {icon} Soal {progress + 1} dari {total_questions}
-    **Kategori: {question['holland_type']}**
-    """)
-    
-    st.info(question['question_text'])
+    st.subheader(f"Soal {progress + 1}")
+    st.write(question['question_text'])
+    st.caption(f"Tipe Holland: {question['holland_type']} | Batas waktu saran: {question['time_limit_seconds']} detik")
 
     with st.form("cat_question_form"):
         answer_value = st.radio(

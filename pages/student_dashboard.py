@@ -2,50 +2,20 @@ import streamlit as st
 from database.db_manager import DatabaseManager
 from utils.auth import check_login, logout
 from utils.config import connection
-from components.sidebar import render_sidebar
-from utils.styles import apply_dark_theme
 
-st.set_page_config(page_title="Dashboard Siswa", page_icon="🎓", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Dashboard Siswa", page_icon="🎓", layout="wide", initial_sidebar_state="collapsed")
 
-# Apply dark theme
-apply_dark_theme()
+# # Cek login
+# check_login()
+# db_manager = DatabaseManager()
+# conn = db_manager.get_connection()
+conn = connection()
 
-@st.cache_data(ttl=60)
-def get_student_progress(user_id):
-    """Cache student progress for 60 seconds"""
-    conn = connection()
-    cursor = conn.cursor()
-    
-    cursor.execute('SELECT COUNT(*) FROM test_results WHERE student_id = ?', (user_id,))
-    test_completed = cursor.fetchone()[0] > 0
-    
-    cursor.execute("SELECT COUNT(*) FROM questions")
-    total_questions = cursor.fetchone()[0]
-    
-    cursor.execute('SELECT COUNT(*) FROM student_answers WHERE student_id = ?', (user_id,))
-    answered_questions = cursor.fetchone()[0]
-    
-    conn.close()
-    
-    return {
-        'test_completed': test_completed,
-        'total_questions': total_questions,
-        'answered_questions': answered_questions
-    }
 
-# Cek login
-check_login()
-
-# Render sidebar
-st.session_state.current_page = 'student_dashboard'
-render_sidebar()
 
 if st.session_state.role != 'student':
     st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
     st.stop()
-
-# Get cached student progress
-progress_data = get_student_progress(st.session_state.user_id)
 
 # Profil siswa
 st.subheader("👤 Profil Siswa")
@@ -64,7 +34,14 @@ st.markdown("---")
 # Status tes
 st.subheader("📋 Status Tes")
 
-test_completed = progress_data['test_completed']
+# Cek apakah siswa sudah mengerjakan tes
+cursor = conn.cursor()
+
+cursor.execute('''
+    SELECT COUNT(*) FROM test_results WHERE student_id = ?
+''', (st.session_state.user_id,))
+
+test_completed = cursor.fetchone()[0] > 0
 
 col1, col2 = st.columns([1, 2])
 
@@ -119,12 +96,22 @@ with st.expander("Cara Mengerjakan Tes"):
     """)
 
 # Statistik soal
+cursor.execute("SELECT COUNT(*) FROM questions")
+total_questions = cursor.fetchone()[0]
+
+cursor.execute('''
+    SELECT COUNT(*) FROM student_answers WHERE student_id = ?
+''', (st.session_state.user_id,))
+answered_questions = cursor.fetchone()[0]
+
 st.markdown("---")
 st.subheader("📈 Progress Tes")
 
-if progress_data['total_questions'] > 0:
-    progress = progress_data['answered_questions'] / progress_data['total_questions']
+if total_questions > 0:
+    progress = answered_questions / total_questions
     st.progress(progress)
-    st.write(f"Soal dijawab: {progress_data['answered_questions']} dari {progress_data['total_questions']} soal ({progress*100:.1f}%)")
+    st.write(f"Soal dijawab: {answered_questions} dari {total_questions} soal ({progress*100:.1f}%)")
 else:
     st.warning("Belum ada soal yang tersedia. Hubungi administrator.")
+
+conn.close()

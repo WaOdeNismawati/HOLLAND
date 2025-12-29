@@ -32,7 +32,11 @@ class CATHollandEngine:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT id, question_text, holland_type
+            SELECT id, question_text, holland_type,
+                   COALESCE(discrimination, 1.0),
+                   COALESCE(difficulty, 0.0),
+                   COALESCE(guessing, 0.2),
+                   COALESCE(time_limit_seconds, 60)
             FROM questions
             ORDER BY id
             """
@@ -46,6 +50,10 @@ class CATHollandEngine:
                 'id': row[0],
                 'question_text': row[1],
                 'holland_type': row[2],
+                'discrimination': float(row[3] or 1.0),
+                'difficulty': float(row[4] or 0.0),
+                'guessing': float(row[5] or 0.2),
+                'time_limit_seconds': int(row[6] or 60),
             }
         return question_map
 
@@ -72,10 +80,7 @@ class CATHollandEngine:
         return self.question_bank.get(question_id)
 
     def select_initial_question(self) -> Optional[Dict]:
-        # Pilih soal pertama secara random
-        import random
-        candidates = list(self.question_bank.values())
-        return random.choice(candidates) if candidates else None
+        return self._select_question_by_target(0.0, [])
 
     def select_next_question(self, theta: float, asked_ids: List[int]) -> Optional[Dict]:
         return self._select_question_by_target(theta, asked_ids)
@@ -88,23 +93,25 @@ class CATHollandEngine:
         if not candidates:
             return None
 
-        # Cek tipe Holland dari soal terakhir yang dijawab
-        last_holland_type = None
-        if asked_ids:
-            last_question = self.question_bank.get(asked_ids[-1])
-            if last_question:
-                last_holland_type = last_question['holland_type']
-        
-        # Prioritaskan soal dengan tipe Holland yang BERBEDA dari soal terakhir
-        if last_holland_type:
-            different_type_candidates = [q for q in candidates if q['holland_type'] != last_holland_type]
-            # Jika masih ada soal dengan tipe berbeda, gunakan itu
-            if different_type_candidates:
-                candidates = different_type_candidates
-        
-        # Pilih soal secara random dari kandidat
-        import random
-        return random.choice(candidates) if candidates else None
+        candidates.sort(
+            key=lambda q: (
+                abs(q['difficulty'] - theta),
+                -q['discrimination']
+            )
+        )
+        return candidates[0]
+
+    def update_theta(self, theta: float, question: Dict, answer_value: int) -> Dict:
+        target = max(0.0, min(1.0, (answer_value - 1) / 4.0))
+        p = self._irt_probability(theta, question)
+        gradient = (target - p) * question['discrimination']
+        new_theta = theta + self.learning_rate * gradient
+        info = max((1.7 * question['discrimination']) ** 2 * p * (1 - p), 1e-6)
+        return {
+            'theta': new_theta,
+            'information_gain': info,
+            'probability': p
+        }
 
     def should_stop(self, answered: int, current_se: Optional[float]) -> bool:
         if answered == 0:
@@ -116,3 +123,12 @@ class CATHollandEngine:
         if answered >= self.min_items and current_se is not None and current_se <= self.target_se:
             return True
         return False
+
+    @staticmethod
+    def _irt_probability(theta: float, question: Dict) -> float:
+        a = question.get('discrimination') or 1.0
+        b = question.get('difficulty') or 0.0
+        c = question.get('guessing') or 0.0
+        expo = -1.7 * a * (theta - b)
+        denom = 1.0 + math.exp(expo)
+        return c + (1 - c) / denom

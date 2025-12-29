@@ -1,7 +1,7 @@
 import json
 import numpy as np
 from database.db_manager import DatabaseManager
-from .anp import calculate_anp_ranking, calculate_hybrid_ranking, ANPProcessor
+from .anp import calculate_anp_ranking, ANPProcessor
 from datetime import datetime, timedelta, timezone
 
 WITA = timezone(timedelta(hours=8))
@@ -119,17 +119,14 @@ class HollandCalculator:
         conn.close()
 
     # ---------------------------------
-    # 4️⃣ Proses lengkap: Holland → Hybrid Ranking
+    # 4️⃣ Proses lengkap: Holland → ANP
     # ---------------------------------
     def process_test_completion(self, student_id, theta=None, theta_se=None, total_items=None):
         """
         Proses lengkap sistem rekomendasi:
         1. Hitung skor RIASEC (Holland)
         2. Identifikasi Holland Code
-        3. Ranking semua jurusan menggunakan Hybrid Method:
-           - ANP untuk criteria weighting (bobot kriteria)
-           - Weighted scoring untuk ranking jurusan
-           - Cosine similarity sebagai bonus
+        3. Ranking semua jurusan menggunakan ANP
         4. Simpan hasil
         """
         print(f"\n{'='*60}")
@@ -147,8 +144,8 @@ class HollandCalculator:
         print(f"\n🎯 Holland Code: {holland_code}")
         print(f"   Top 3 Types: {', '.join(top_3_types)}")
         
-        # STEP 3: Ranking menggunakan ANP Murni (Supermatrix + Limit Matrix)
-        print(f"\n🧮 Menjalankan ANP Murni (Supermatrix + Inner Dependency)...")
+        # STEP 3: Ranking menggunakan ANP
+        print(f"\n🧮 Menjalankan ANP untuk ranking semua jurusan...")
         anp_results = None
         recommended_major = None
         
@@ -156,16 +153,15 @@ class HollandCalculator:
         print(f"   📊 Total {total_majors} jurusan akan dianalisis")
         
         try:
-            # Jalankan ANP Murni untuk semua jurusan dari database
+            # Jalankan ANP untuk semua jurusan dari database
             anp_results = calculate_anp_ranking(scores)
             
             if anp_results and anp_results['ranked_majors']:
                 recommended_major = anp_results['ranked_majors'][0][0]
                 
-                print(f"   ✅ Top 5 Rekomendasi:")
+                print(f"   ✅ Top 5 Rekomendasi ANP:")
                 for i, (major, data) in enumerate(anp_results['ranked_majors'][:5], 1):
-                    anp_score = data.get('anp_score', 0)
-                    print(f"      {i}. {major}: {anp_score:.4f}")
+                    print(f"      {i}. {major}: {data['anp_score']:.4f}")
             
         except Exception as e:
             print(f"   ⚠️ Error ANP: {e}")
