@@ -47,20 +47,75 @@ top_3_types = json.loads(result[2])
 recommended_major = result[3]
 completed_at = result[4]
 
-# PENTING: Pastikan menggunakan holland_scores sebagai sumber data utama
-# untuk konsistensi di seluruh halaman
-student_profile = holland_scores  # Sumber data utama
+# ==========================================
+# EXTRACT DATA FROM NESTED STRUCTURE
+# ==========================================
+# Get ANP weights from nested structure
+anp_weights = anp_results.get('anp_weights', {})
 
-# Jika ada data di anp_results, gunakan student_riasec_profile dari sana
-# HANYA jika sama dengan holland_scores (untuk validasi)
-if anp_results and isinstance(anp_results, dict):
-    anp_profile = anp_results.get('student_riasec_profile', {})
-    # Validasi: pastikan data konsisten
-    if anp_profile and anp_profile != holland_scores:
-        st.warning("⚠️ Terdeteksi inkonsistensi data. Menggunakan holland_scores sebagai referensi.")
-        # Override dengan holland_scores
-        if 'student_riasec_profile' in anp_results:
-            anp_results['student_riasec_profile'] = holland_scores
+if not anp_weights and 'anp_results' in anp_results:
+    nested = anp_results.get('anp_results', {})
+    
+    # Try direct criteria_priorities first
+    anp_weights = nested.get('criteria_priorities', {})
+    
+    # If not found, try in calculation_details
+    if not anp_weights:
+        if 'calculation_details' in nested:
+            calc_details_nested = nested.get('calculation_details', {})
+            if 'criteria_priorities' in calc_details_nested:
+                anp_weights = calc_details_nested.get('criteria_priorities', {})
+                # Force update to ensure it's not empty
+                if not anp_weights:
+                    anp_weights = calc_details_nested['criteria_priorities']
+
+# Debug sudah selesai - extraction logic bekerja dengan baik!
+
+# Get rankings from nested structure  
+major_rankings = anp_results.get('major_rankings', [])
+if not major_rankings and 'anp_results' in anp_results:
+    nested_rankings = anp_results.get('anp_results', {}).get('ranked_majors', [])
+    major_rankings = [[item[0], item[1]['hybrid_score']] for item in nested_rankings if len(item) >= 2]
+
+# Get calculation details
+calc_details = anp_results.get('anp_results', {}) if 'anp_results' in anp_results else anp_results
+
+# Extract consistency_ratio, is_consistent and converged status
+consistency_ratio = None
+is_consistent = False
+converged = True
+
+# Priority extraction: Try nested structure first (common case)
+if 'anp_results' in anp_results and isinstance(anp_results.get('anp_results'), dict):
+    nested = anp_results['anp_results']
+    
+    # Extract from calculation_details (primary location)
+    if 'calculation_details' in nested and isinstance(nested['calculation_details'], dict):
+        calc_details_nested = nested['calculation_details']
+        consistency_ratio = calc_details_nested.get('consistency_ratio')
+        is_consistent = calc_details_nested.get('is_consistent', False)
+        converged = calc_details_nested.get('converged', True)
+    
+    # Fallback: Try top level of nested (secondary location)
+    if consistency_ratio is None:
+        consistency_ratio = nested.get('consistency_ratio')
+        is_consistent = nested.get('is_consistent', False)
+        converged = nested.get('converged', True)
+
+# Last resort: Direct access from calc_details
+if consistency_ratio is None:
+    consistency_ratio = calc_details.get('consistency_ratio')
+    is_consistent = calc_details.get('is_consistent', False)
+    converged = calc_details.get('converged', True)
+
+# Get normalized scores (0-1) from ANP results
+normalized_0_1 = anp_results.get('student_riasec_profile', {})
+if not normalized_0_1:
+    max_score = max(holland_scores.values()) if holland_scores else 1
+    normalized_0_1 = {k: v / max_score for k, v in holland_scores.items()}
+
+# For visualization only: scale to 0-10 for better readability
+normalized_visual = {k: v * 10 for k, v in normalized_0_1.items()}
 
 # Header hasil
 st.success(f"✅ Tes diselesaikan pada: {convert_utc_to_local(completed_at)}")
@@ -151,7 +206,7 @@ if anp_results and isinstance(anp_results, dict):
         with col1:
             st.metric(
                 "Jurusan Dianalisis",
-                anp_results.get('total_analyzed', 0),
+                len(major_rankings) if major_rankings else 0,
                 help="Total jurusan yang dianalisis ANP"
             )
         
@@ -160,56 +215,49 @@ if anp_results and isinstance(anp_results, dict):
             is_consistent = calc_details.get('is_consistent', False)
             st.metric(
                 "Consistency Ratio",
-                f"{cr_value:.4f}",
-                "✓ Konsisten" if is_consistent else "⚠ Perlu Review",
+                f"{consistency_ratio:.4f}" if consistency_ratio is not None else "N/A",
+                "✓ Konsisten" if is_consistent else "✓ Valid" if (consistency_ratio is not None and consistency_ratio < 0.1) else "⚠ Review",
                 help="CR < 0.1 dianggap konsisten"
             )
         
         with col3:
             st.metric(
-                "Iterasi Konvergen",
-                calc_details.get('iterations', 0),
-                help="Jumlah iterasi hingga supermatrix konvergen"
+                "Metode",
+                "Hybrid ANP",
+                help="ANP + Weighted Score + Cosine Similarity"
             )
         
         with col4:
-            converged = calc_details.get('converged', False)
             st.metric(
-                "Status Konvergensi",
-                "✓ Konvergen" if converged else "⚠ Tidak",
-                help="Apakah limit supermatrix berhasil konvergen"
+                "Status",
+                "✓ Konvergen" if converged else "⚠ Check",
+                help="Status konvergensi supermatrix"
             )
         
         st.markdown("---")
         
         # Penjelasan metodologi
-        methodology = anp_results.get('methodology', 'ANP')
+        st.success("""
+        **🎯 HYBRID WEIGHTED SCORING**
         
-        if 'Hybrid' in methodology:
-            st.success("""
-            **🎯 HYBRID WEIGHTED SCORING**
-            
-            Sistem ini menggabungkan kekuatan dari dua metode:
-            
-            1. **ANP (Analytic Network Process)** untuk menghitung bobot kriteria RIASEC
-               - Menggunakan pairwise comparison
-               - Mempertimbangkan ketergantungan antar kriteria
-            
-            2. **Weighted Scoring** untuk ranking jurusan
-               - Setiap jurusan dihitung: Σ(bobot_kriteria × profil_jurusan × skor_siswa)
-               - Ditambah bonus cosine similarity (kemiripan profil)
-            
-            3. **Formula Akhir:** Hybrid Score = 80% Weighted Score + 20% Similarity
-            
-            **Keunggulan:** Akurasi tinggi (95%+), diferensiasi jelas, dan performa cepat!
-            """)
-        else:
-            st.info("""
-            **Analytic Network Process (ANP)** adalah metode pengambilan keputusan multi-kriteria yang:
-            - Mempertimbangkan ketergantungan dan feedback antar kriteria
-            - Menggunakan pairwise comparison untuk menentukan bobot
-            - Menghasilkan ranking yang lebih akurat dibanding metode sederhana
-            """)
+        Sistem ini menggabungkan kekuatan dari tiga metode:
+        
+        1. **ANP (Analytic Network Process)** untuk menghitung bobot kriteria RIASEC
+           - Skor RIASEC Anda dinormalisasi ke skala 0-1
+           - Dibuat **pairwise comparison matrix** dengan ratio antar skor
+           - Ratio otomatis di-clip ke skala Saaty (1/9 hingga 9)
+           - Menghitung priority vector menggunakan eigenvalue method
+        
+        2. **Weighted Scoring** untuk menghitung kesesuaian dengan jurusan
+           - Formula: Σ(bobot_kriteria_ANP × profil_jurusan × skor_siswa)
+        
+        3. **Cosine Similarity** untuk mengukur kemiripan pola profil
+           - Nilai 0-1 (semakin mendekati 1 = semakin mirip)
+        
+        4. **Hybrid Score** = 60% Weighted Score + 40% Cosine Similarity
+        
+        **Keunggulan:** Akurasi tinggi, diferensiasi jelas, dan performa cepat!
+        """)
     
     # TAB 2: Bobot Kriteria
     with tab2:
@@ -364,344 +412,47 @@ dibanding {riasec_types[1]} dengan rasio {matrix[0, 1]:.2f}:1
         top_5_majors = anp_results.get('top_5_majors', [])
         methodology = anp_results.get('methodology', 'ANP')
         
-        if top_5_majors:
-            # Create comprehensive ranking table
-            ranking_data = []
+        if major_rankings:
+            st.info(f"📌 Menampilkan Top {min(len(major_rankings), 20)} dari {len(major_rankings)} jurusan")
             
-            for i, major_info in enumerate(top_5_majors, 1):
-                if isinstance(major_info, dict):
-                    major_name = major_info.get('major_name', 'Unknown')
-                    # Support both hybrid_score and anp_score
-                    score = major_info.get('hybrid_score', major_info.get('anp_score', 0))
-                    weighted = major_info.get('weighted_score', 0)
-                    similarity = major_info.get('similarity', 0)
-                elif isinstance(major_info, (list, tuple)) and len(major_info) >= 2:
-                    major_name = major_info[0]
-                    data = major_info[1]
-                    score = data.get('hybrid_score', data.get('anp_score', 0))
-                    weighted = data.get('weighted_score', 0)
-                    similarity = data.get('similarity', 0)
-                else:
-                    continue
-                
-                rank_item = {
-                    'Rank': i,
-                    'Jurusan': major_name,
-                    'Skor Final': f"{score:.6f}",
-                    'Persentase': f"{score * 100:.2f}%",
-                }
-                
-                # Add breakdown if hybrid method
-                if 'Hybrid' in methodology:
-                    rank_item['Weighted'] = f"{weighted:.3f}"
-                    rank_item['Similarity'] = f"{similarity:.3f}"
-                
-                rank_item['Rating'] = "⭐" * min(5, max(1, int((score / max(score, 1.0)) * 5)))
-                
-                ranking_data.append(rank_item)
-            
-            ranking_df = pd.DataFrame(ranking_data)
+            # Top 20
+            top_20 = major_rankings[:20]
+            df_majors = pd.DataFrame(top_20, columns=['Jurusan', 'Hybrid Score'])
+            df_majors.index = range(1, len(df_majors) + 1)
+            df_majors['Hybrid Score'] = df_majors['Hybrid Score'].round(4)
             
             # Display with styling
             st.dataframe(
-                ranking_df,
-                hide_index=True,
+                df_majors.style.background_gradient(subset=['Hybrid Score'], cmap='Greens'),
                 use_container_width=True
             )
             
-            # Visualisasi skor
-            majors_list = [item['Jurusan'] for item in ranking_data]
-            scores_list = [float(item['Skor Final']) for item in ranking_data]
-            
-            # Create stacked bar if hybrid method
-            if 'Hybrid' in methodology and ranking_data and 'Weighted' in ranking_data[0]:
-                weighted_list = [float(item['Weighted']) for item in ranking_data]
-                similarity_list = [float(item['Similarity']) for item in ranking_data]
-                
-                fig_ranking = go.Figure(data=[
-                    go.Bar(
-                        name='Weighted Score',
-                        x=[w * 0.8 for w in weighted_list],
-                        y=majors_list,
-                        orientation='h',
-                        marker=dict(color='rgb(26, 118, 255)'),
-                        text=[f"{w:.3f}" for w in weighted_list],
-                        textposition='inside'
-                    ),
-                    go.Bar(
-                        name='Similarity Bonus',
-                        x=[s * 0.2 for s in similarity_list],
-                        y=majors_list,
-                        orientation='h',
-                        marker=dict(color='rgb(255, 153, 51)'),
-                        text=[f"{s:.3f}" for s in similarity_list],
-                        textposition='inside'
-                    )
-                ])
-                
-                fig_ranking.update_layout(
-                    barmode='stack',
-                    title="Breakdown Hybrid Score (80% Weighted + 20% Similarity)",
-                    xaxis_title="Skor Hybrid",
-                    yaxis_title="Jurusan",
-                    height=max(400, len(majors_list) * 50),
-                    margin=dict(l=150, r=100, t=50, b=50),
-                    legend=dict(x=0.7, y=1.1, orientation='h')
-                )
-            else:
-                fig_ranking = go.Figure(data=[
-                    go.Bar(
-                        x=scores_list,
-                        y=majors_list,
-                        orientation='h',
-                        marker=dict(
-                            color=scores_list,
-                            colorscale='Viridis',
-                            showscale=True,
-                            colorbar=dict(title="Skor")
-                        ),
-                        text=[f"{score:.4f}" for score in scores_list],
-                        textposition='outside'
-                    )
-                ])
-                
-                fig_ranking.update_layout(
-                    title="Distribusi Skor",
-                    xaxis_title="Skor",
-                    yaxis_title="Jurusan",
-                    height=max(400, len(majors_list) * 40),
-                    margin=dict(l=150, r=100, t=50, b=50)
-                )
-            
-            st.plotly_chart(fig_ranking, use_container_width=True)
-            
-            # Detail untuk jurusan teratas
-            st.markdown("---")
-            st.write("### 🔍 Analisis Detail Top 5 Jurusan")
-            
-            # Create tabs for each top major
-            if len(top_5_majors) >= 5:
-                major_tabs = st.tabs([f"#{i+1} {(m.get('major_name') if isinstance(m, dict) else m[0])[:20]}" 
-                                     for i, m in enumerate(top_5_majors[:5])])
-                
-                for tab_idx, (major_tab, major_info) in enumerate(zip(major_tabs, top_5_majors[:5])):
-                    with major_tab:
-                        if isinstance(major_info, dict):
-                            major_name = major_info.get('major_name', 'Unknown')
-                            major_data = major_info
-                        elif isinstance(major_info, (list, tuple)) and len(major_info) >= 2:
-                            major_name = major_info[0]
-                            major_data = major_info[1]
-                        else:
-                            continue
-                        
-                        st.write(f"### {major_name}")
-                        
-                        # Display scores
-                        score_col1, score_col2, score_col3 = st.columns(3)
-                        with score_col1:
-                            final_score = major_data.get('hybrid_score', major_data.get('anp_score', 0))
-                            st.metric("Skor Final", f"{final_score:.4f}")
-                        with score_col2:
-                            weighted = major_data.get('weighted_score', 0)
-                            if weighted:
-                                st.metric("Weighted Score", f"{weighted:.3f}")
-                        with score_col3:
-                            similarity = major_data.get('similarity', 0)
-                            if similarity:
-                                st.metric("Similarity", f"{similarity:.3f}")
-                        
-                        st.markdown("---")
-                        
-                        # Profile matching visualization
-                        riasec_profile = major_data.get('riasec_profile', {})
-                        if riasec_profile and holland_scores:
-                            st.write("**📊 Profile Matching Visualization**")
-                            
-                            # Create comparison data
-                            comparison_data = []
-                            for criterion in ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']:
-                                comparison_data.append({
-                                    'Kriteria': criterion,
-                                    'Skor Anda': holland_scores.get(criterion, 0),
-                                    'Profil Jurusan': riasec_profile.get(criterion, 0)
-                                })
-                            
-                            comparison_df = pd.DataFrame(comparison_data)
-                            
-                            # Create grouped bar chart
-                            fig_comparison = go.Figure()
-                            
-                            fig_comparison.add_trace(go.Bar(
-                                name='Skor Anda',
-                                x=comparison_df['Kriteria'],
-                                y=comparison_df['Skor Anda'],
-                                marker_color='rgb(26, 118, 255)'
-                            ))
-                            
-                            fig_comparison.add_trace(go.Bar(
-                                name='Profil Jurusan',
-                                x=comparison_df['Kriteria'],
-                                y=comparison_df['Profil Jurusan'],
-                                marker_color='rgb(255, 153, 51)'
-                            ))
-                            
-                            fig_comparison.update_layout(
-                                barmode='group',
-                                title=f"Kesesuaian Profil RIASEC",
-                                xaxis_title="Kriteria",
-                                yaxis_title="Skor",
-                                height=400,
-                                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
-                            )
-                            
-                            st.plotly_chart(fig_comparison, use_container_width=True)
-                        
-                        # Contribution breakdown
-                        criteria_contribution = major_data.get('criteria_contribution', major_data.get('criteria_weights', {}))
-                        if criteria_contribution:
-                            st.write("**🎯 Breakdown Kontribusi per Kriteria**")
-                            
-                            contrib_data = []
-                            for criterion, contrib in criteria_contribution.items():
-                                contrib_data.append({
-                                    'Kriteria': criterion,
-                                    'Kontribusi': contrib
-                                })
-                            
-                            contrib_df = pd.DataFrame(contrib_data).sort_values('Kontribusi', ascending=False)
-                            
-                            # Create horizontal bar chart
-                            fig_contrib = px.bar(
-                                contrib_df,
-                                y='Kriteria',
-                                x='Kontribusi',
-                                orientation='h',
-                                color='Kontribusi',
-                                color_continuous_scale='Blues',
-                                title="Kontribusi Setiap Kriteria ke Skor Final"
-                            )
-                            
-                            fig_contrib.update_layout(height=300, showlegend=False)
-                            st.plotly_chart(fig_contrib, use_container_width=True)
-                            
-                            # Show table
-                            st.write("**Detail Kontribusi:**")
-                            for _, row in contrib_df.iterrows():
-                                percentage = (row['Kontribusi'] / contrib_df['Kontribusi'].sum()) * 100
-                                st.write(f"- **{row['Kriteria']}**: {row['Kontribusi']:.6f} ({percentage:.1f}%)")
+            # Bar chart horizontal Top 10
+            st.write("**📊 Visualisasi Top 10 Jurusan**")
+            top_10 = major_rankings[:10]
+            fig_majors = go.Figure(data=[go.Bar(
+                y=[item[0] for item in top_10],
+                x=[item[1] for item in top_10],
+                orientation='h',
+                marker_color='#1a3a52',
+                text=[f"{item[1]:.4f}" for item in top_10],
+                textposition='auto'
+            )])
+            fig_majors.update_layout(
+                title="Top 10 Jurusan (Hybrid Score)",
+                xaxis_title="Hybrid Score",
+                yaxis_title="Jurusan",
+                height=500,
+                yaxis={'categoryorder':'total ascending'},
+                paper_bgcolor='rgba(26, 26, 46, 0.5)',
+                plot_bgcolor='rgba(22, 33, 62, 0.3)',
+                font_color='#ffffff',
+                template='plotly_dark'
+            )
+            st.plotly_chart(fig_majors, use_container_width=True)
+        else:
+            st.warning("Data ranking jurusan tidak tersedia")
 
-st.markdown("---")
-
-# Grafik skor Holland
-st.subheader("📈 Skor Lengkap Tipe Holland")
-
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    # Bar chart
-    df_scores = pd.DataFrame(list(holland_scores.items()), columns=['Tipe Holland', 'Skor'])
-    df_scores = df_scores.sort_values('Skor', ascending=True)
-    
-    fig_bar = px.bar(df_scores, x='Skor', y='Tipe Holland', orientation='h',
-                     color='Skor', color_continuous_scale='viridis',
-                     title="Skor Tipe Holland Anda")
-    
-    fig_bar.update_layout(showlegend=False, height=400)
-    st.plotly_chart(fig_bar, use_container_width=True)
-
-with col2:
-    # Radar chart
-    categories = list(holland_scores.keys())
-    values = list(holland_scores.values())
-    
-    fig_radar = go.Figure()
-    
-    fig_radar.add_trace(go.Scatterpolar(
-        r=values,
-        theta=categories,
-        fill='toself',
-        name='Skor Anda',
-        line_color='rgb(0, 123, 255)'
-    ))
-    
-    fig_radar.update_layout(
-        polar=dict(
-            radialaxis=dict(
-                visible=True,
-                range=[0, max(values) * 1.1]
-            )),
-        showlegend=False,
-        title="Profil Holland Anda",
-        height=400
-    )
-    
-    st.plotly_chart(fig_radar, use_container_width=True)
-
-# Interpretasi hasil
-st.markdown("---")
-st.subheader("💡 Interpretasi Hasil")
-
-with st.expander("Penjelasan Tipe Kepribadian Anda", expanded=True):
-    primary_type = top_3_types[0]
-    primary_desc = holland_descriptions[primary_type]
-    
-    st.write(f"""
-    **Tipe Utama Anda: {primary_desc['icon']} {primary_desc['title']}**
-    
-    {primary_desc['desc']}
-    
-    **Kombinasi 3 Tipe Teratas Anda:**
-    """)
-    
-    for i, holland_type in enumerate(top_3_types, 1):
-        desc = holland_descriptions[holland_type]
-        st.write(f"{i}. **{desc['icon']} {desc['title']}:** {desc['desc']}")
-
-with st.expander("Saran Pengembangan Karier"):
-    if anp_results and anp_results.get('top_5_majors'):
-        top_5_list = []
-        for major_data in anp_results['top_5_majors']:
-            if isinstance(major_data, dict):
-                top_5_list.append(major_data.get('major_name', ''))
-            elif isinstance(major_data, (list, tuple)) and len(major_data) >= 1:
-                top_5_list.append(major_data[0])
-        
-        st.write(f"""
-        Berdasarkan analisis ANP dan profil RIASEC Anda, berikut adalah saran karier:
-        
-        **🏆 Jurusan Utama yang Direkomendasikan:** {recommended_major}
-        
-        **📚 5 Pilihan Terbaik:** {', '.join(top_5_list) if top_5_list else 'Data tidak tersedia'}
-        
-        **💼 Bidang Karier yang Cocok:**
-        - Bidang yang melibatkan karakteristik {top_3_types[0].lower()} (kekuatan utama)
-        - Pekerjaan yang memadukan aspek {top_3_types[1].lower()} dan {top_3_types[2].lower()}
-        - Pertimbangkan juga jurusan ranking 2-3 sebagai alternatif
-        
-        **🚀 Tips Pengembangan:**
-        - Fokus mengembangkan keterampilan {top_3_types[0]} sebagai kekuatan utama
-        - Perkuat kemampuan {top_3_types[1]} dan {top_3_types[2]} sebagai pendukung
-        - Cari pengalaman magang atau proyek di bidang terkait 5 jurusan teratas
-        - Pertimbangkan double major atau minor yang melengkapi profil Anda
-        """)
-    else:
-        st.write(f"""
-        Berdasarkan hasil tes Anda, berikut adalah beberapa saran:
-        
-        **🎓 Jurusan yang Direkomendasikan:** {recommended_major}
-        
-        **💼 Bidang Karier yang Cocok:**
-        - Bidang yang melibatkan karakteristik {top_3_types[0].lower()}
-        - Pekerjaan yang memadukan aspek {top_3_types[1].lower()} dan {top_3_types[2].lower()}
-        
-        **🚀 Tips Pengembangan:**
-        - Kembangkan keterampilan yang sesuai dengan tipe kepribadian utama Anda
-        - Cari pengalaman yang menggabungkan ketiga tipe teratas Anda
-        - Pertimbangkan untuk mengambil kursus atau pelatihan di bidang yang relevan
-        """)
-
-# Tombol aksi
 st.markdown("---")
 col1, col2 = st.columns(2)
 

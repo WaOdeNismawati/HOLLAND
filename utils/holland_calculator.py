@@ -213,6 +213,10 @@ class HollandCalculator:
                     weighted = data.get('weighted_score', 0)
                     similarity = data.get('similarity', 0)
                     print(f"      {i}. {major}: {hybrid_score:.4f} (weighted: {weighted:.3f}, sim: {similarity:.3f})")
+                    hybrid_score = data.get('hybrid_score', data.get('anp_score', 0))
+                    weighted = data.get('weighted_score', 0)
+                    similarity = data.get('similarity', 0)
+                    print(f"      {i}. {major}: {hybrid_score:.4f} (weighted: {weighted:.3f}, sim: {similarity:.3f})")
             
         except Exception as e:
             print(f"   ⚠️ Error ANP: {e}")
