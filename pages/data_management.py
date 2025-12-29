@@ -306,7 +306,7 @@ with tab2:
 
         df_questions = pd.DataFrame(
             questions_data,
-            columns=['ID', 'Teks Soal', 'Tipe Holland', 'Difficulty', 'Discrimination', 'Guessing', 'Time Limit (s)']
+            columns=['ID', 'Teks Soal', 'Tipe Holland']
         )
         st.subheader("📋 Daftar Soal")
         st.dataframe(df_questions, use_container_width=True)

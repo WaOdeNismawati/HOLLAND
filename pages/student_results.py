@@ -76,42 +76,33 @@ if not anp_weights and 'anp_results' in anp_results:
 
 # Debug sudah selesai - extraction logic bekerja dengan baik!
 
+# Get calculation details
+calc_details = anp_results.get('anp_results', {}) if 'anp_results' in anp_results else anp_results
+
 # Get rankings from nested structure  
 major_rankings = anp_results.get('major_rankings', [])
 if not major_rankings and 'anp_results' in anp_results:
     nested_rankings = anp_results.get('anp_results', {}).get('ranked_majors', [])
-    major_rankings = [[item[0], item[1]['hybrid_score']] for item in nested_rankings if len(item) >= 2]
+    major_rankings = [[item[0], item[1]['anp_score']] for item in nested_rankings if len(item) >= 2]
 
-# Get calculation details
-calc_details = anp_results.get('anp_results', {}) if 'anp_results' in anp_results else anp_results
-
-# Extract consistency_ratio, is_consistent and converged status
+# Extract consistency_ratio for display
 consistency_ratio = None
 is_consistent = False
-converged = True
 
-# Priority extraction: Try nested structure first (common case)
 if 'anp_results' in anp_results and isinstance(anp_results.get('anp_results'), dict):
     nested = anp_results['anp_results']
-    
-    # Extract from calculation_details (primary location)
     if 'calculation_details' in nested and isinstance(nested['calculation_details'], dict):
         calc_details_nested = nested['calculation_details']
         consistency_ratio = calc_details_nested.get('consistency_ratio')
         is_consistent = calc_details_nested.get('is_consistent', False)
-        converged = calc_details_nested.get('converged', True)
-    
-    # Fallback: Try top level of nested (secondary location)
     if consistency_ratio is None:
         consistency_ratio = nested.get('consistency_ratio')
         is_consistent = nested.get('is_consistent', False)
-        converged = nested.get('converged', True)
 
-# Last resort: Direct access from calc_details
-if consistency_ratio is None:
+if consistency_ratio is None and calc_details:
     consistency_ratio = calc_details.get('consistency_ratio')
     is_consistent = calc_details.get('is_consistent', False)
-    converged = calc_details.get('converged', True)
+
 
 # Get normalized scores (0-1) from ANP results
 normalized_0_1 = anp_results.get('student_riasec_profile', {})
@@ -215,60 +206,58 @@ if anp_results and isinstance(anp_results, dict):
     
     # TAB 1: Ringkasan Hasil
     with tab1:
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             st.metric(
                 "Jurusan Dianalisis",
                 len(major_rankings) if major_rankings else 0,
-                help="Total jurusan yang dianalisis ANP"
+                help="Total jurusan yang dianalisis"
             )
         
         with col2:
             st.metric(
                 "Consistency Ratio",
                 f"{consistency_ratio:.4f}" if consistency_ratio is not None else "N/A",
-                "✓ Konsisten" if is_consistent else "✓ Valid" if (consistency_ratio is not None and consistency_ratio < 0.1) else "⚠ Review",
-                help="CR < 0.1 dianggap konsisten"
+                "✓ Konsisten" if is_consistent else ("⚠ Perlu Review" if consistency_ratio and consistency_ratio >= 0.1 else ""),
+                help="CR < 0.1 dianggap konsisten (Saaty)"
             )
         
         with col3:
             st.metric(
                 "Metode",
-                "Hybrid ANP",
-                help="ANP + Weighted Score + Cosine Similarity"
-            )
-        
-        with col4:
-            st.metric(
-                "Status",
-                "✓ Konvergen" if converged else "⚠ Check",
-                help="Status konvergensi supermatrix"
+                "ANP Murni",
+                help="ANP + Inner Dependency + Supermatrix"
             )
         
         st.markdown("---")
         
         # Penjelasan metodologi
         st.success("""
-        **🎯 HYBRID WEIGHTED SCORING**
+        **🎯 ANP dengan Inner Dependency + Alternative Similarity**
         
-        Sistem ini menggabungkan kekuatan dari tiga metode:
+        Sistem ini menggunakan metode ANP lengkap sesuai teori Saaty:
         
-        1. **ANP (Analytic Network Process)** untuk menghitung bobot kriteria RIASEC
-           - Skor RIASEC Anda dinormalisasi ke skala 0-1
-           - Dibuat **pairwise comparison matrix** dengan ratio antar skor
-           - Ratio otomatis di-clip ke skala Saaty (1/9 hingga 9)
-           - Menghitung priority vector menggunakan eigenvalue method
+        1. **Pairwise Comparison Matrix** (6×6)
+           - Membandingkan kriteria RIASEC berdasarkan skor siswa
+           - Dimodifikasi dengan **Inner Dependency** dari Holland Hexagon
+           - Menghasilkan Consistency Ratio (CR) yang valid
         
-        2. **Weighted Scoring** untuk menghitung kesesuaian dengan jurusan
-           - Formula: Σ(bobot_kriteria_ANP × profil_jurusan × skor_siswa)
+        2. **Eigenvalue Method**
+           - Menghitung bobot prioritas setiap kriteria RIASEC
+           - Menggunakan principal eigenvector dari pairwise matrix
         
-        3. **Cosine Similarity** untuk mengukur kemiripan pola profil
-           - Nilai 0-1 (semakin mendekati 1 = semakin mirip)
+        3. **Supermatrix Construction** (4 blok)
+           - **W₁₁** Kriteria×Kriteria: Inner dependency antar tipe RIASEC
+           - **W₂₁** Alternatif×Kriteria: Profil jurusan × skor siswa
+           - **W₁₂** Kriteria×Alternatif: Feedback loop
+           - **W₂₂** Alternatif×Alternatif: **Cosine Similarity** antar profil jurusan
         
-        4. **Hybrid Score** = 60% Weighted Score + 40% Cosine Similarity
+        4. **Limit Supermatrix**
+           - Iterasi hingga konvergen (maks 100 iterasi)
+           - Menghasilkan prioritas akhir untuk setiap jurusan
         
-        **Keunggulan:** Akurasi tinggi, diferensiasi jelas, dan performa cepat!
+        **Keunggulan:** Metodologi ANP lengkap, mempertimbangkan hubungan antar kriteria DAN antar alternatif!
         """)
     
     # TAB 2: Bobot Kriteria
@@ -402,13 +391,13 @@ if anp_results and isinstance(anp_results, dict):
             
             # Top 20
             top_20 = major_rankings[:20]
-            df_majors = pd.DataFrame(top_20, columns=['Jurusan', 'Hybrid Score'])
+            df_majors = pd.DataFrame(top_20, columns=['Jurusan', 'ANP Score'])
             df_majors.index = range(1, len(df_majors) + 1)
-            df_majors['Hybrid Score'] = df_majors['Hybrid Score'].round(4)
+            df_majors['ANP Score'] = df_majors['ANP Score'].round(4)
             
             # Styling
             st.dataframe(
-                df_majors.style.background_gradient(subset=['Hybrid Score'], cmap='Greens'),
+                df_majors.style.background_gradient(subset=['ANP Score'], cmap='Greens'),
                 use_container_width=True
             )
             
@@ -424,8 +413,8 @@ if anp_results and isinstance(anp_results, dict):
                 textposition='auto'
             )])
             fig_majors.update_layout(
-                title="Top 10 Jurusan (Hybrid Score)",
-                xaxis_title="Hybrid Score",
+                title="Top 10 Jurusan (ANP Score)",
+                xaxis_title="ANP Score",
                 yaxis_title="Jurusan",
                 height=500,
                 yaxis={'categoryorder':'total ascending'},
@@ -437,6 +426,109 @@ if anp_results and isinstance(anp_results, dict):
             st.plotly_chart(fig_majors, use_container_width=True)
         else:
             st.warning("Data ranking jurusan tidak tersedia")
+
+st.markdown("---")
+
+# =============================================
+# TAMPILKAN RIWAYAT JAWABAN TES
+# =============================================
+with st.expander("📋 Lihat Riwayat Jawaban Tes", expanded=False):
+    st.subheader("📝 Jawaban Tes Anda")
+    
+    # Ambil jawaban siswa dari database
+    conn_answers = connection()
+    cursor_answers = conn_answers.cursor()
+    
+    cursor_answers.execute('''
+        SELECT 
+            sa.question_order,
+            q.question_text,
+            q.holland_type,
+            sa.answer,
+            sa.response_time
+        FROM student_answers sa
+        JOIN questions q ON sa.question_id = q.id
+        WHERE sa.student_id = ?
+        ORDER BY sa.question_order ASC
+    ''', (st.session_state.user_id,))
+    
+    answers_data = cursor_answers.fetchall()
+    conn_answers.close()
+    
+    if answers_data:
+        # Label untuk nilai jawaban
+        answer_descriptions = {
+            1: "Sangat Tidak Setuju",
+            2: "Tidak Setuju",
+            3: "Netral",
+            4: "Setuju",
+            5: "Sangat Setuju"
+        }
+        
+        # Icon untuk tipe Holland
+        holland_icons_answers = {
+            'Realistic': '🔧',
+            'Investigative': '🔬',
+            'Artistic': '🎨',
+            'Social': '👥',
+            'Enterprising': '💼',
+            'Conventional': '📊'
+        }
+        
+        # Buat DataFrame untuk ditampilkan
+        df_answers = pd.DataFrame(answers_data, columns=[
+            'No', 'Pertanyaan', 'Tipe Holland', 'Nilai', 'Waktu (detik)'
+        ])
+        
+        # Tambahkan icon ke tipe Holland
+        df_answers['Tipe Holland'] = df_answers['Tipe Holland'].apply(
+            lambda x: f"{holland_icons_answers.get(x, '📌')} {x}"
+        )
+        
+        # Tambahkan deskripsi jawaban
+        df_answers['Jawaban'] = df_answers['Nilai'].apply(
+            lambda x: f"{x} - {answer_descriptions.get(x, 'Unknown')}"
+        )
+        
+        # Tampilkan statistik singkat
+        col_stat1, col_stat2, col_stat3 = st.columns(3)
+        with col_stat1:
+            st.metric("Total Soal Dijawab", len(df_answers))
+        with col_stat2:
+            avg_answer = df_answers['Nilai'].mean()
+            st.metric("Rata-rata Nilai", f"{avg_answer:.2f}")
+        with col_stat3:
+            avg_time = sum([x[4] for x in answers_data if x[4]]) / len(answers_data)
+            st.metric("Rata-rata Waktu", f"{avg_time:.1f}s")
+        
+        st.markdown("---")
+        
+        # Tampilkan tabel jawaban (tanpa kolom Nilai asli)
+        df_display = df_answers[['No', 'Pertanyaan', 'Tipe Holland', 'Jawaban', 'Waktu (detik)']]
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
+        
+        # Ringkasan per tipe Holland
+        st.markdown("---")
+        st.write("**📊 Ringkasan Jawaban per Tipe Holland:**")
+        
+        summary_data = []
+        for holland_type in ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']:
+            type_answers = [x[3] for x in answers_data if x[2] == holland_type]
+            if type_answers:
+                icon = holland_icons_answers.get(holland_type, '📌')
+                total = sum(type_answers)
+                avg = sum(type_answers) / len(type_answers)
+                summary_data.append({
+                    'Tipe': f"{icon} {holland_type}",
+                    'Jumlah Soal': len(type_answers),
+                    'Total Skor': total,
+                    'Rata-rata': f"{avg:.2f}"
+                })
+        
+        df_summary = pd.DataFrame(summary_data)
+        st.dataframe(df_summary, use_container_width=True, hide_index=True)
+    else:
+        st.info("Belum ada data jawaban tersimpan.")
 
 st.markdown("---")
 

@@ -20,6 +20,29 @@ class ANPProcessor:
             8: 1.41,
             9: 1.45
         }
+        
+        # =====================================================
+        # INNER DEPENDENCY MATRIX BERDASARKAN HOLLAND HEXAGON
+        # =====================================================
+        # Teori Holland: Tipe yang berdekatan di hexagon saling berkorelasi
+        # Hexagon: R - I - A - S - E - C - R (circular)
+        # 
+        # Korelasi:
+        #   - Adjacent (berdekatan): korelasi tinggi (0.8)
+        #   - Alternate (selang 1): korelasi sedang (0.4)
+        #   - Opposite (berlawanan): korelasi rendah (0.2)
+        #
+        # Urutan: R=0, I=1, A=2, S=3, E=4, C=5
+        #
+        self.holland_correlation = np.array([
+            # R     I     A     S     E     C
+            [1.00, 0.80, 0.40, 0.20, 0.40, 0.80],  # R: adjacent to I,C; opposite to S
+            [0.80, 1.00, 0.80, 0.40, 0.20, 0.40],  # I: adjacent to R,A; opposite to E
+            [0.40, 0.80, 1.00, 0.80, 0.40, 0.20],  # A: adjacent to I,S; opposite to C
+            [0.20, 0.40, 0.80, 1.00, 0.80, 0.40],  # S: adjacent to A,E; opposite to R
+            [0.40, 0.20, 0.40, 0.80, 1.00, 0.80],  # E: adjacent to S,C; opposite to I
+            [0.80, 0.40, 0.20, 0.40, 0.80, 1.00],  # C: adjacent to E,R; opposite to A
+        ])
 
     # =======================
     # LOAD DATA DARI DATABASE
@@ -49,6 +72,51 @@ class ANPProcessor:
             raise RuntimeError(f"Gagal memuat data jurusan dari database: {e}")
 
     # =======================
+    # INNER DEPENDENCY
+    # =======================
+    def get_inner_dependency_matrix(self):
+        """
+        Mengembalikan matriks inner dependency antar kriteria RIASEC.
+        Berdasarkan Holland Hexagon Theory dimana tipe yang berdekatan
+        memiliki hubungan yang lebih kuat.
+        """
+        return self.holland_correlation.copy()
+    
+    def build_inner_dependency_pairwise(self):
+        """
+        Bangun pairwise comparison matrix untuk inner dependency antar kriteria.
+        Menghasilkan matriks yang TIDAK perfectly consistent sehingga CR > 0.
+        """
+        size = len(self.riasec_types)
+        matrix = np.ones((size, size))
+        
+        # Konversi korelasi ke skala Saaty (1-9)
+        # Korelasi tinggi (0.8) -> nilai rendah (mendekati 1, artinya setara pentingnya)
+        # Korelasi rendah (0.2) -> nilai tinggi (sampai 5, artinya ada perbedaan signifikan)
+        for i in range(size):
+            for j in range(i + 1, size):
+                correlation = self.holland_correlation[i, j]
+                
+                # Konversi: korelasi tinggi = perbedaan kecil, korelasi rendah = perbedaan besar
+                # Formula: saaty_value = 1 + (1 - correlation) * 4
+                # Hasil: 0.8 -> 1.8, 0.4 -> 3.4, 0.2 -> 4.2
+                saaty_value = 1 + (1 - correlation) * 4
+                
+                # Tambahkan sedikit variasi untuk menghasilkan inkonsistensi yang wajar
+                # Variasi berdasarkan posisi dalam hexagon
+                position_factor = 1 + 0.1 * abs(i - j) / size
+                saaty_value *= position_factor
+                
+                # Clip ke range Saaty yang valid
+                saaty_value = float(np.clip(saaty_value, 1, 9))
+                
+                matrix[i, j] = saaty_value
+                matrix[j, i] = 1 / saaty_value
+        
+        np.fill_diagonal(matrix, 1.0)
+        return matrix
+
+    # =======================
     # PERHITUNGAN ANP
     # =======================
     def calculate_priority(self, matrix):
@@ -60,7 +128,10 @@ class ANPProcessor:
         return np.abs(priority_vector), float(eigenvalues[max_idx].real)
 
     def build_pairwise_matrix(self, riasec_scores):
-        """Bangun matriks perbandingan berpasangan dari skor RIASEC siswa"""
+        """
+        Bangun matriks perbandingan berpasangan dari skor RIASEC siswa
+        dengan mempertimbangkan inner dependency dari Holland Hexagon.
+        """
         size = len(self.riasec_types)
         matrix = np.ones((size, size))
 
@@ -69,12 +140,32 @@ class ANPProcessor:
             for t in self.riasec_types
         }
 
+        # Dapatkan inner dependency matrix
+        inner_dep = self.get_inner_dependency_matrix()
+
         for i in range(size):
             for j in range(i + 1, size):
-                ratio = safe_scores[self.riasec_types[i]] / safe_scores[self.riasec_types[j]]
-                ratio = float(np.clip(ratio, 1/9, 9))
-                matrix[i, j] = ratio
-                matrix[j, i] = 1 / ratio
+                # Rasio dasar dari skor siswa
+                base_ratio = safe_scores[self.riasec_types[i]] / safe_scores[self.riasec_types[j]]
+                
+                # Faktor korelasi dari Holland Hexagon
+                # Tipe yang berkorelasi tinggi akan memiliki pengaruh yang lebih seimbang
+                correlation_factor = inner_dep[i, j]
+                
+                # Modifikasi rasio berdasarkan korelasi:
+                # - Korelasi tinggi (0.8): rasio mendekati 1 (lebih seimbang)
+                # - Korelasi rendah (0.2): rasio lebih ekstrem
+                # Formula: adjusted_ratio = base_ratio ^ (1 - correlation_factor * 0.5)
+                if base_ratio > 1:
+                    adjusted_ratio = base_ratio ** (1 - correlation_factor * 0.3)
+                else:
+                    adjusted_ratio = base_ratio ** (1 + correlation_factor * 0.3)
+                
+                # Clip ke range Saaty
+                adjusted_ratio = float(np.clip(adjusted_ratio, 1/9, 9))
+                
+                matrix[i, j] = adjusted_ratio
+                matrix[j, i] = 1 / adjusted_ratio
 
         np.fill_diagonal(matrix, 1.0)
         return matrix
@@ -101,8 +192,72 @@ class ANPProcessor:
         cr = ci / ri
         return float(ci), float(cr), cr < 0.1
 
-    def build_supermatrix(self, riasec_scores, major_weights, criteria_block, criteria_priorities):
-        """Bangun supermatrix ANP"""
+    def build_alternative_similarity_matrix(self, major_weights, alpha=0.3):
+        """
+        Bangun matriks cosine similarity antar alternatif (jurusan).
+        
+        Args:
+            major_weights: Dictionary profil RIASEC setiap jurusan
+            alpha: Faktor pengali (0-1) untuk mengontrol pengaruh similarity
+        
+        Returns:
+            Matriks similarity (n_alternatives × n_alternatives)
+        """
+        alternative_names = list(major_weights.keys())
+        n_alternatives = len(alternative_names)
+        similarity_matrix = np.zeros((n_alternatives, n_alternatives))
+        
+        # Bangun vektor profil untuk setiap jurusan
+        profiles = []
+        for major in alternative_names:
+            profile = major_weights[major]
+            vector = np.array([profile[c] for c in self.riasec_types])
+            profiles.append(vector)
+        
+        # Hitung cosine similarity untuk setiap pasangan
+        for i in range(n_alternatives):
+            for j in range(n_alternatives):
+                if i == j:
+                    similarity_matrix[i, j] = 1.0  # Similarity dengan diri sendiri
+                else:
+                    # Cosine similarity = dot(A,B) / (||A|| × ||B||)
+                    dot_product = np.dot(profiles[i], profiles[j])
+                    norm_i = np.linalg.norm(profiles[i])
+                    norm_j = np.linalg.norm(profiles[j])
+                    
+                    if norm_i > 0 and norm_j > 0:
+                        cos_sim = dot_product / (norm_i * norm_j)
+                    else:
+                        cos_sim = 0.0
+                    
+                    # Terapkan faktor pengali
+                    similarity_matrix[i, j] = alpha * cos_sim
+        
+        return similarity_matrix, alternative_names
+
+    def build_supermatrix(self, riasec_scores, major_weights, criteria_block, criteria_priorities, alpha=0.0):
+        """
+        Bangun supermatrix ANP dengan inner dependency (TANPA alternative similarity).
+        
+        Struktur Supermatrix (DIPERBAIKI):
+        ┌─────────────────────────────────────────┐
+        │  [Kriteria×Kriteria]  [Kriteria×Alt]    │
+        │  W₁₁ (inner dep)      W₁₂ (feedback)    │
+        │                                         │
+        │  [Alternatif×Krit]    [0]               │
+        │  W₂₁ (pengaruh)       W₂₂ = 0           │
+        └─────────────────────────────────────────┘
+        
+        PERBAIKAN: W₂₂ diset ke 0 untuk menghindari averaging effect
+        yang menyebabkan skor jurusan menjadi seragam.
+        
+        Args:
+            riasec_scores: Skor RIASEC siswa (normalized)
+            major_weights: Profil RIASEC setiap jurusan
+            criteria_block: Matriks kriteria yang sudah dinormalisasi
+            criteria_priorities: Bobot prioritas kriteria
+            alpha: Tidak digunakan (kept for backward compatibility)
+        """
         criteria_names = self.riasec_types
         alternative_names = list(major_weights.keys())
 
@@ -111,33 +266,57 @@ class ANPProcessor:
         matrix_size = n_criteria + n_alternatives
         supermatrix = np.zeros((matrix_size, matrix_size))
 
-        # Hubungan antar kriteria berdasarkan pairwise comparison
-        supermatrix[0:n_criteria, 0:n_criteria] = criteria_block
+        # =====================================================
+        # BLOK W₁₁: KRITERIA × KRITERIA (Inner Dependency)
+        # =====================================================
+        inner_dep = self.get_inner_dependency_matrix()
+        
+        for i in range(n_criteria):
+            for j in range(n_criteria):
+                if i == j:
+                    supermatrix[i, j] = criteria_block[i, j]
+                else:
+                    influence = criteria_block[i, j] * inner_dep[i, j]
+                    supermatrix[i, j] = influence
 
-        # Hubungan alternatif terhadap kriteria (disesuaikan dengan skor siswa)
+        # =====================================================
+        # BLOK W₂₁: ALTERNATIF × KRITERIA (Pengaruh Utama)
+        # =====================================================
+        # Ini adalah blok terpenting: seberapa cocok jurusan dengan kriteria siswa
         for i, major in enumerate(alternative_names):
             for j, criterion in enumerate(criteria_names):
-                # Bobot = profil jurusan × kekuatan siswa di kriteria tersebut
                 major_profile_weight = major_weights[major][criterion]
                 student_strength = riasec_scores.get(criterion, 0)
-                
-                # Interaksi antara kebutuhan jurusan dan kemampuan siswa
+                # Interaksi: jurusan cocok jika profil jurusan AND kekuatan siswa sama-sama tinggi
                 interaction_weight = major_profile_weight * student_strength
                 supermatrix[n_criteria + i, j] = interaction_weight
 
-        # Hubungan kriteria terhadap alternatif (feedback loop)
+        # =====================================================
+        # BLOK W₁₂: KRITERIA × ALTERNATIF (Feedback Loop)
+        # =====================================================
         for j, major in enumerate(alternative_names):
             for i, criterion in enumerate(criteria_names):
                 crit_weight = criteria_priorities[i] * major_weights[major][criterion]
                 supermatrix[i, n_criteria + j] = crit_weight
 
-        # Normalisasi kolom
+        # =====================================================
+        # BLOK W₂₂: ALTERNATIF × ALTERNATIF
+        # PERBAIKAN: Set ke 0 (tidak ada hubungan antar alternatif)
+        # Ini mencegah averaging effect yang membuat skor seragam
+        # =====================================================
+        # supermatrix[n_criteria:, n_criteria:] = 0 (sudah 0 dari np.zeros)
+
+        # =====================================================
+        # NORMALISASI KOLOM
+        # =====================================================
         for j in range(matrix_size):
             col_sum = np.sum(supermatrix[:, j])
             if col_sum > 0:
                 supermatrix[:, j] = supermatrix[:, j] / col_sum
             else:
-                supermatrix[:, j] = 1.0 / matrix_size
+                # Untuk kolom alternatif-alternatif yang 0, biarkan 0
+                # Ini akan diabaikan saat ekstraksi prioritas
+                pass
 
         return supermatrix, criteria_names, alternative_names
 
@@ -198,22 +377,38 @@ class ANPProcessor:
         limit_matrix, iterations, converged = self.limit_supermatrix(supermatrix)
 
         n_criteria = len(criteria_names)
+        n_alternatives = len(alternative_names)
+        
+        # =====================================================
+        # PERBAIKAN: Ekstraksi prioritas HANYA dari kolom kriteria
+        # Ini menghasilkan skor yang lebih diferensiatif karena:
+        # 1. Tidak terpengaruh oleh W₂₂ (yang sudah 0)
+        # 2. Fokus pada hubungan alternatif-kriteria
+        # =====================================================
+        
+        # Ambil blok alternatif × kriteria saja (bukan semua kolom)
         alternative_block = limit_matrix[n_criteria:, :n_criteria]
+        
         if alternative_block.size == 0:
             raise ValueError("Limit supermatrix tidak memiliki blok alternatif yang valid")
 
-        alternative_priorities = alternative_block.mean(axis=1)
+        # Weighted sum menggunakan criteria priorities
+        # Score = Σ(alternative_block[i,j] × criteria_priorities[j])
+        alternative_priorities = np.dot(alternative_block, criteria_priorities)
+        
+        # Normalisasi agar total = 1
         total_priority = np.sum(alternative_priorities)
         if total_priority > 0:
             alternative_priorities = alternative_priorities / total_priority
         else:
-            alternative_priorities = np.full_like(alternative_priorities, 1 / len(alternative_priorities))
+            alternative_priorities = np.full_like(alternative_priorities, 1 / n_alternatives)
 
         # Compile hasil
         major_scores = {}
         for i, major in enumerate(alternative_names):
+            # Kontribusi per kriteria untuk analisis detail
             contribution = {
-                criterion: float(criteria_priorities[idx] * major_map[major][criterion] * riasec_scores.get(criterion, 0))
+                criterion: float(alternative_block[i, idx] * criteria_priorities[idx])
                 for idx, criterion in enumerate(self.riasec_types)
             }
             major_scores[major] = {
@@ -236,7 +431,7 @@ class ANPProcessor:
             'ranked_majors': ranked,
             'total_analyzed': len(ranked),
             'student_riasec_profile': riasec_scores,
-            'methodology': 'ANP (Analytic Network Process)',
+            'methodology': 'ANP dengan Inner Dependency (Diperbaiki)',
             'top_5_majors': top_5,
             'calculation_details': {
                 'pairwise_matrix': pairwise_matrix.tolist(),
@@ -244,12 +439,15 @@ class ANPProcessor:
                     criterion: float(criteria_priorities[idx])
                     for idx, criterion in enumerate(criteria_names)
                 },
+                'inner_dependency_matrix': self.holland_correlation.tolist(),
                 'consistency_index': ci,
                 'consistency_ratio': cr,
                 'is_consistent': is_consistent,
                 'iterations': iterations,
                 'converged': converged,
-                'supermatrix_size': len(criteria_names) + len(alternative_names)
+                'supermatrix_size': n_criteria + n_alternatives,
+                'extraction_method': 'Weighted sum dari blok alternatif×kriteria dengan criteria priorities',
+                'inner_dependency_note': 'Based on Holland Hexagon Theory: Adjacent types have high correlation (0.8), opposite types have low correlation (0.2)'
             }
         }
 
@@ -367,7 +565,7 @@ def calculate_hybrid_ranking(riasec_scores, filtered_majors=None):
         'ranked_majors': ranked,
         'total_analyzed': len(ranked),
         'student_riasec_profile': riasec_scores,
-        'methodology': 'Hybrid (ANP Criteria Weighting + Weighted Scoring)',
+        'methodology': 'Hybrid (ANP Criteria Weighting + Weighted Scoring) with Inner Dependency',
         'top_5_majors': top_5,
         'calculation_details': {
             'pairwise_matrix': pairwise_matrix.tolist(),
@@ -375,10 +573,12 @@ def calculate_hybrid_ranking(riasec_scores, filtered_majors=None):
                 criterion: float(criteria_priorities[idx])
                 for idx, criterion in enumerate(anp.riasec_types)
             },
+            'inner_dependency_matrix': anp.holland_correlation.tolist(),
             'consistency_index': ci,
             'consistency_ratio': cr,
             'is_consistent': is_consistent,
-            'weighting_formula': '0.8 * weighted_score + 0.2 * similarity'
+            'weighting_formula': '0.8 * weighted_score + 0.2 * similarity',
+            'inner_dependency_note': 'Based on Holland Hexagon Theory'
         }
     }
 

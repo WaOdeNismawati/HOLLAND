@@ -144,8 +144,8 @@ class HollandCalculator:
         print(f"\n🎯 Holland Code: {holland_code}")
         print(f"   Top 3 Types: {', '.join(top_3_types)}")
         
-        # STEP 3: Ranking menggunakan Hybrid Method (ANP + Weighted Scoring)
-        print(f"\n🧮 Menjalankan Hybrid Ranking (ANP Criteria Weighting + Weighted Scoring)...")
+        # STEP 3: Ranking menggunakan ANP Murni (Supermatrix + Limit Matrix)
+        print(f"\n🧮 Menjalankan ANP Murni (Supermatrix + Inner Dependency)...")
         anp_results = None
         recommended_major = None
         
@@ -153,18 +153,16 @@ class HollandCalculator:
         print(f"   📊 Total {total_majors} jurusan akan dianalisis")
         
         try:
-            # Jalankan Hybrid Ranking untuk semua jurusan dari database
-            anp_results = calculate_hybrid_ranking(scores)
+            # Jalankan ANP Murni untuk semua jurusan dari database
+            anp_results = calculate_anp_ranking(scores)
             
             if anp_results and anp_results['ranked_majors']:
                 recommended_major = anp_results['ranked_majors'][0][0]
                 
                 print(f"   ✅ Top 5 Rekomendasi:")
                 for i, (major, data) in enumerate(anp_results['ranked_majors'][:5], 1):
-                    hybrid_score = data.get('hybrid_score', data.get('anp_score', 0))
-                    weighted = data.get('weighted_score', 0)
-                    similarity = data.get('similarity', 0)
-                    print(f"      {i}. {major}: {hybrid_score:.4f} (weighted: {weighted:.3f}, sim: {similarity:.3f})")
+                    anp_score = data.get('anp_score', 0)
+                    print(f"      {i}. {major}: {anp_score:.4f}")
             
         except Exception as e:
             print(f"   ⚠️ Error ANP: {e}")

@@ -241,5 +241,116 @@ if session_state.get('result'):
                     st.write(f"{i}. {major_data[0]} (Score: {major_data[1].get('anp_score', 0):.4f})")
 
     st.markdown("---")
+    
+    # =============================================
+    # TAMPILKAN RIWAYAT JAWABAN TES
+    # =============================================
+    with st.expander("📋 Lihat Riwayat Jawaban Tes", expanded=False):
+        st.subheader("📝 Jawaban Tes Anda")
+        
+        # Ambil jawaban siswa dari database
+        from database.db_manager import DatabaseManager
+        import pandas as pd
+        
+        db = DatabaseManager()
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                sa.question_order,
+                q.question_text,
+                q.holland_type,
+                sa.answer,
+                sa.response_time
+            FROM student_answers sa
+            JOIN questions q ON sa.question_id = q.id
+            WHERE sa.student_id = ?
+            ORDER BY sa.question_order ASC
+        ''', (st.session_state.user_id,))
+        
+        answers_data = cursor.fetchall()
+        conn.close()
+        
+        if answers_data:
+            # Label untuk nilai jawaban
+            answer_descriptions = {
+                1: "Sangat Tidak Setuju",
+                2: "Tidak Setuju",
+                3: "Netral",
+                4: "Setuju",
+                5: "Sangat Setuju"
+            }
+            
+            # Icon untuk tipe Holland
+            holland_icons = {
+                'Realistic': '🔧',
+                'Investigative': '🔬',
+                'Artistic': '🎨',
+                'Social': '👥',
+                'Enterprising': '💼',
+                'Conventional': '📊'
+            }
+            
+            # Buat DataFrame untuk ditampilkan
+            df_answers = pd.DataFrame(answers_data, columns=[
+                'No', 'Pertanyaan', 'Tipe Holland', 'Nilai', 'Waktu (detik)'
+            ])
+            
+            # Tambahkan icon ke tipe Holland
+            df_answers['Tipe Holland'] = df_answers['Tipe Holland'].apply(
+                lambda x: f"{holland_icons.get(x, '📌')} {x}"
+            )
+            
+            # Tambahkan deskripsi jawaban
+            df_answers['Jawaban'] = df_answers['Nilai'].apply(
+                lambda x: f"{x} - {answer_descriptions.get(x, 'Unknown')}"
+            )
+            
+            # Format waktu respons
+            df_answers['Waktu (detik)'] = df_answers['Waktu (detik)'].apply(
+                lambda x: f"{x:.1f}s" if x else "-"
+            )
+            
+            # Tampilkan statistik singkat
+            col_stat1, col_stat2, col_stat3 = st.columns(3)
+            with col_stat1:
+                st.metric("Total Soal Dijawab", len(df_answers))
+            with col_stat2:
+                avg_answer = df_answers['Nilai'].mean()
+                st.metric("Rata-rata Nilai", f"{avg_answer:.2f}")
+            with col_stat3:
+                avg_time = sum([x[4] for x in answers_data if x[4]]) / len(answers_data)
+                st.metric("Rata-rata Waktu", f"{avg_time:.1f}s")
+            
+            st.markdown("---")
+            
+            # Tampilkan tabel jawaban (tanpa kolom Nilai asli)
+            df_display = df_answers[['No', 'Pertanyaan', 'Tipe Holland', 'Jawaban', 'Waktu (detik)']]
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+            
+            # Ringkasan per tipe Holland
+            st.markdown("---")
+            st.write("**📊 Ringkasan Jawaban per Tipe Holland:**")
+            
+            summary_data = []
+            for holland_type in ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']:
+                type_answers = [x[3] for x in answers_data if x[2] == holland_type]
+                if type_answers:
+                    icon = holland_icons.get(holland_type, '📌')
+                    total = sum(type_answers)
+                    avg = sum(type_answers) / len(type_answers)
+                    summary_data.append({
+                        'Tipe': f"{icon} {holland_type}",
+                        'Jumlah Soal': len(type_answers),
+                        'Total Skor': total,
+                        'Rata-rata': f"{avg:.2f}"
+                    })
+            
+            df_summary = pd.DataFrame(summary_data)
+            st.dataframe(df_summary, use_container_width=True, hide_index=True)
+        else:
+            st.info("Belum ada data jawaban tersimpan.")
+    
     if st.button("📄 Lihat Hasil Lengkap", type="primary", use_container_width=True):
         st.switch_page("pages/student_results.py")
