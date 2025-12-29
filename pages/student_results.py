@@ -51,71 +51,6 @@ completed_at = result[4]
 # untuk konsistensi di seluruh halaman
 student_profile = holland_scores  # Sumber data utama
 
-<<<<<<< HEAD
-if not anp_weights and 'anp_results' in anp_results:
-    nested = anp_results.get('anp_results', {})
-    
-    # Try direct criteria_priorities first
-    anp_weights = nested.get('criteria_priorities', {})
-    
-    # If not found, try in calculation_details
-    if not anp_weights:
-        if 'calculation_details' in nested:
-            calc_details_nested = nested.get('calculation_details', {})
-            if 'criteria_priorities' in calc_details_nested:
-                anp_weights = calc_details_nested.get('criteria_priorities', {})
-                # Force update to ensure it's not empty
-                if not anp_weights:
-                    anp_weights = calc_details_nested['criteria_priorities']
-
-# Debug sudah selesai - extraction logic bekerja dengan baik!
-
-# Get rankings from nested structure  
-major_rankings = anp_results.get('major_rankings', [])
-if not major_rankings and 'anp_results' in anp_results:
-    nested_rankings = anp_results.get('anp_results', {}).get('ranked_majors', [])
-    major_rankings = [[item[0], item[1]['hybrid_score']] for item in nested_rankings if len(item) >= 2]
-
-# Get calculation details
-calc_details = anp_results.get('anp_results', {}) if 'anp_results' in anp_results else anp_results
-
-# Extract consistency_ratio, is_consistent and converged status
-consistency_ratio = None
-is_consistent = False
-converged = True
-
-# Priority extraction: Try nested structure first (common case)
-if 'anp_results' in anp_results and isinstance(anp_results.get('anp_results'), dict):
-    nested = anp_results['anp_results']
-    
-    # Extract from calculation_details (primary location)
-    if 'calculation_details' in nested and isinstance(nested['calculation_details'], dict):
-        calc_details_nested = nested['calculation_details']
-        consistency_ratio = calc_details_nested.get('consistency_ratio')
-        is_consistent = calc_details_nested.get('is_consistent', False)
-        converged = calc_details_nested.get('converged', True)
-    
-    # Fallback: Try top level of nested (secondary location)
-    if consistency_ratio is None:
-        consistency_ratio = nested.get('consistency_ratio')
-        is_consistent = nested.get('is_consistent', False)
-        converged = nested.get('converged', True)
-
-# Last resort: Direct access from calc_details
-if consistency_ratio is None:
-    consistency_ratio = calc_details.get('consistency_ratio')
-    is_consistent = calc_details.get('is_consistent', False)
-    converged = calc_details.get('converged', True)
-
-# Get normalized scores (0-1) from ANP results
-normalized_0_1 = anp_results.get('student_riasec_profile', {})
-if not normalized_0_1:
-    max_score = max(holland_scores.values()) if holland_scores else 1
-    normalized_0_1 = {k: v / max_score for k, v in holland_scores.items()}
-
-# For visualization only: scale to 0-10 for better readability
-normalized_visual = {k: v * 10 for k, v in normalized_0_1.items()}
-=======
 # Jika ada data di anp_results, gunakan student_riasec_profile dari sana
 # HANYA jika sama dengan holland_scores (untuk validasi)
 if anp_results and isinstance(anp_results, dict):
@@ -126,7 +61,6 @@ if anp_results and isinstance(anp_results, dict):
         # Override dengan holland_scores
         if 'student_riasec_profile' in anp_results:
             anp_results['student_riasec_profile'] = holland_scores
->>>>>>> parent of 08b515a (feat: Add new pages, components, services, and assets while removing numerous old scripts and temporary files.)
 
 # Header hasil
 st.success(f"✅ Tes diselesaikan pada: {convert_utc_to_local(completed_at)}")
@@ -217,13 +151,8 @@ if anp_results and isinstance(anp_results, dict):
         with col1:
             st.metric(
                 "Jurusan Dianalisis",
-<<<<<<< HEAD
-                len(major_rankings) if major_rankings else 0,
-                help="Total jurusan yang dianalisis"
-=======
                 anp_results.get('total_analyzed', 0),
                 help="Total jurusan yang dianalisis ANP"
->>>>>>> parent of 08b515a (feat: Add new pages, components, services, and assets while removing numerous old scripts and temporary files.)
             )
         
         with col2:
@@ -231,24 +160,13 @@ if anp_results and isinstance(anp_results, dict):
             is_consistent = calc_details.get('is_consistent', False)
             st.metric(
                 "Consistency Ratio",
-<<<<<<< HEAD
-                f"{consistency_ratio:.4f}" if consistency_ratio is not None else "N/A",
-                "✓ Konsisten" if is_consistent else ("⚠ Perlu Review" if consistency_ratio and consistency_ratio >= 0.1 else ""),
-                help="CR < 0.1 dianggap konsisten (Saaty)"
-=======
                 f"{cr_value:.4f}",
                 "✓ Konsisten" if is_consistent else "⚠ Perlu Review",
                 help="CR < 0.1 dianggap konsisten"
->>>>>>> parent of 08b515a (feat: Add new pages, components, services, and assets while removing numerous old scripts and temporary files.)
             )
         
         with col3:
             st.metric(
-<<<<<<< HEAD
-                "Metode",
-                "ANP Murni",
-                help="ANP + Inner Dependency + Supermatrix"
-=======
                 "Iterasi Konvergen",
                 calc_details.get('iterations', 0),
                 help="Jumlah iterasi hingga supermatrix konvergen"
@@ -260,40 +178,11 @@ if anp_results and isinstance(anp_results, dict):
                 "Status Konvergensi",
                 "✓ Konvergen" if converged else "⚠ Tidak",
                 help="Apakah limit supermatrix berhasil konvergen"
->>>>>>> parent of 08b515a (feat: Add new pages, components, services, and assets while removing numerous old scripts and temporary files.)
             )
         
         st.markdown("---")
         
         # Penjelasan metodologi
-<<<<<<< HEAD
-        st.success("""
-        **🎯 HYBRID WEIGHTED SCORING**
-        
-        Sistem ini menggunakan metode ANP lengkap sesuai teori Saaty:
-        
-        1. **Pairwise Comparison Matrix** (6×6)
-           - Membandingkan kriteria RIASEC berdasarkan skor siswa
-           - Dimodifikasi dengan **Inner Dependency** dari Holland Hexagon
-           - Menghasilkan Consistency Ratio (CR) yang valid
-        
-        2. **Eigenvalue Method**
-           - Menghitung bobot prioritas setiap kriteria RIASEC
-           - Menggunakan principal eigenvector dari pairwise matrix
-        
-        3. **Supermatrix Construction** (4 blok)
-           - **W₁₁** Kriteria×Kriteria: Inner dependency antar tipe RIASEC
-           - **W₂₁** Alternatif×Kriteria: Profil jurusan × skor siswa
-           - **W₁₂** Kriteria×Alternatif: Feedback loop
-           - **W₂₂** Alternatif×Alternatif: **Cosine Similarity** antar profil jurusan
-        
-        4. **Limit Supermatrix**
-           - Iterasi hingga konvergen (maks 100 iterasi)
-           - Menghasilkan prioritas akhir untuk setiap jurusan
-        
-        **Keunggulan:** Metodologi ANP lengkap, mempertimbangkan hubungan antar kriteria DAN antar alternatif!
-        """)
-=======
         methodology = anp_results.get('methodology', 'ANP')
         
         if 'Hybrid' in methodology:
@@ -321,7 +210,6 @@ if anp_results and isinstance(anp_results, dict):
             - Menggunakan pairwise comparison untuk menentukan bobot
             - Menghasilkan ranking yang lebih akurat dibanding metode sederhana
             """)
->>>>>>> parent of 08b515a (feat: Add new pages, components, services, and assets while removing numerous old scripts and temporary files.)
     
     # TAB 2: Bobot Kriteria
     with tab2:
@@ -480,13 +368,6 @@ dibanding {riasec_types[1]} dengan rasio {matrix[0, 1]:.2f}:1
             # Create comprehensive ranking table
             ranking_data = []
             
-<<<<<<< HEAD
-            # Top 20
-            top_20 = major_rankings[:20]
-            df_majors = pd.DataFrame(top_20, columns=['Jurusan', 'Hybrid Score'])
-            df_majors.index = range(1, len(df_majors) + 1)
-            df_majors['ANP Score'] = df_majors['ANP Score'].round(4)
-=======
             for i, major_info in enumerate(top_5_majors, 1):
                 if isinstance(major_info, dict):
                     major_name = major_info.get('major_name', 'Unknown')
@@ -518,53 +399,11 @@ dibanding {riasec_types[1]} dengan rasio {matrix[0, 1]:.2f}:1
                 rank_item['Rating'] = "⭐" * min(5, max(1, int((score / max(score, 1.0)) * 5)))
                 
                 ranking_data.append(rank_item)
->>>>>>> parent of 08b515a (feat: Add new pages, components, services, and assets while removing numerous old scripts and temporary files.)
             
             ranking_df = pd.DataFrame(ranking_data)
             
             # Display with styling
             st.dataframe(
-<<<<<<< HEAD
-                df_majors.style.background_gradient(subset=['ANP Score'], cmap='Greens'),
-                use_container_width=True
-            )
-            
-            # Bar chart horizontal Top 10
-            st.write("**📊 Visualisasi Top 10 Jurusan**")
-            top_10 = major_rankings[:10]
-            fig_majors = go.Figure(data=[go.Bar(
-                y=[item[0] for item in top_10],
-                x=[item[1] for item in top_10],
-                orientation='h',
-                marker_color='#1a3a52',
-                text=[f"{item[1]:.4f}" for item in top_10],
-                textposition='auto'
-            )])
-            fig_majors.update_layout(
-                title="Top 10 Jurusan (Hybrid Score)",
-                xaxis_title="Hybrid Score",
-                yaxis_title="Jurusan",
-                height=500,
-                yaxis={'categoryorder':'total ascending'},
-                paper_bgcolor='rgba(26, 26, 46, 0.5)',
-                plot_bgcolor='rgba(22, 33, 62, 0.3)',
-                font_color='#ffffff',
-                template='plotly_dark'
-            )
-            st.plotly_chart(fig_majors, use_container_width=True)
-        else:
-            st.warning("Data ranking jurusan tidak tersedia")
-
-st.markdown("---")
-
-# Footer - Informasi Tambahan
-with st.expander("ℹ️ Tentang Metode Perhitungan"):
-    st.markdown("""
-    ### 📚 Referensi Ilmiah
-    
-    - **Holland's Theory of Career Choice** (John L. Holland, 1959)
-    - **Analytical Network Process** (Thomas L. Saaty, 1996)
-=======
                 ranking_df,
                 hide_index=True,
                 use_container_width=True
@@ -575,7 +414,7 @@ with st.expander("ℹ️ Tentang Metode Perhitungan"):
             scores_list = [float(item['Skor Final']) for item in ranking_data]
             
             # Create stacked bar if hybrid method
-            if 'Hybrid' in methodology and 'Weighted' in ranking_data[0]:
+            if 'Hybrid' in methodology and ranking_data and 'Weighted' in ranking_data[0]:
                 weighted_list = [float(item['Weighted']) for item in ranking_data]
                 similarity_list = [float(item['Similarity']) for item in ranking_data]
                 
@@ -754,9 +593,6 @@ with st.expander("ℹ️ Tentang Metode Perhitungan"):
 
 st.markdown("---")
 
-st.markdown("---")
->>>>>>> parent of 08b515a (feat: Add new pages, components, services, and assets while removing numerous old scripts and temporary files.)
-
 # Grafik skor Holland
 st.subheader("📈 Skor Lengkap Tipe Holland")
 
@@ -867,15 +703,12 @@ with st.expander("Saran Pengembangan Karier"):
 
 # Tombol aksi
 st.markdown("---")
-col1, col2, = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
-
     if st.button("🖨️ Cetak Hasil", use_container_width=True):
         st.info("Fitur cetak akan segera tersedia!")
 
 with col2:
     if st.button("🏠 Dashboard", use_container_width=True):
         st.switch_page("pages/student_dashboard.py")
-
-conn.close()
