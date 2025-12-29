@@ -34,6 +34,13 @@ if st.session_state.role != 'admin':
     st.error("Akses ditolak! Halaman ini hanya untuk admin.")
     st.stop()
 
+
+# ===============================
+# Main content
+# ===============================
+st.title("🗃️ Manajemen Data")
+st.markdown("---")
+
 # Tabs untuk berbagai jenis data
 tab1, tab2, tab3 = st.tabs(["👥 Data Siswa", "📝 Data Soal", "📚 Data Alternatif (Jurusan)"])
 

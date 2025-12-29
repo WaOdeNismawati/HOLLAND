@@ -7,7 +7,6 @@ import traceback
 
 from database.db_manager import DatabaseManager
 from utils.auth import hash_password
-from utils.holland_calculator import HollandCalculator
 
 WITA = timezone(timedelta(hours=8))
 
@@ -442,15 +441,6 @@ def save_csv_to_db_majors(file_csv):
         return f"❌ Error saat import majors: {e}"
 
 
-def _safe_st_call(func, *args, **kwargs):
-    """Safely call Streamlit functions, ignore if context not available"""
-    try:
-        return func(*args, **kwargs)
-    except Exception as e:
-        print(f"[Streamlit UI skipped]: {e}")
-        return None
-
-
 def save_csv_to_db_student_answers(uploaded_file):
     """
     Import student answers CSV or Excel.
@@ -478,7 +468,7 @@ def save_csv_to_db_student_answers(uploaded_file):
             df = _try_read_csv(uploaded_file)
 
         if df is None or df.shape[0] == 0:
-            _safe_st_call(st.error, "❌ File kosong atau tidak terbaca.")
+            st.error("❌ File kosong atau tidak terbaca.")
             return "❌ File kosong atau tidak terbaca."
 
         # auto rename columns
@@ -495,9 +485,9 @@ def save_csv_to_db_student_answers(uploaded_file):
         elif all(col in df.columns for col in required_opt2):
             use_student_id = False
         else:
-            _safe_st_call(st.error, "❌ Format CSV tidak valid. Butuh kolom: student_id OR username, plus question_id & answer.")
-            _safe_st_call(st.info, f"Kolom ditemukan: {list(df.columns)}")
-            return "❌ Format CSV tidak valid"
+            st.error("❌ Format CSV tidak valid. Butuh kolom: student_id OR username, plus question_id & answer.")
+            st.info(f"Kolom ditemukan: {list(df.columns)}")
+            return
 
         # clean columns
         df_columns_before = list(df.columns)
@@ -510,13 +500,13 @@ def save_csv_to_db_student_answers(uploaded_file):
         cursor = conn.cursor()
         _reset_sequence_if_table_empty(conn, "student_answers")
         if not use_student_id:
-            _safe_st_call(st.info, "🔄 Mengonversi username -> student_id ...")
+            st.info("🔄 Mengonversi username -> student_id ...")
             cursor.execute("SELECT id, username FROM users WHERE role = 'student'")
             username_map = {row[1]: row[0] for row in cursor.fetchall()}  # username -> id
             df["student_id"] = df["username"].map(username_map)
             missing_usernames = df[df["student_id"].isna()]["username"].unique()
             if len(missing_usernames) > 0:
-                _safe_st_call(st.warning, f"⚠️ Username tidak ditemukan: {', '.join(map(str, missing_usernames))}")
+                st.warning(f"⚠️ Username tidak ditemukan: {', '.join(map(str, missing_usernames))}")
                 # drop missing users
                 df = df.dropna(subset=["student_id"])
 
@@ -530,7 +520,7 @@ def save_csv_to_db_student_answers(uploaded_file):
         # Validate answer range
         invalid_answers = df[(df["answer"] < 1) | (df["answer"] > 5) | (df["answer"].isna())]
         if len(invalid_answers) > 0:
-            _safe_st_call(st.warning, f"⚠️ Ditemukan {len(invalid_answers)} baris dengan jawaban tidak valid (1-5). Baris ini akan diabaikan.")
+            st.warning(f"⚠️ Ditemukan {len(invalid_answers)} baris dengan jawaban tidak valid (1-5). Baris ini akan diabaikan.")
             df = df[~df.index.isin(invalid_answers.index)]
 
         # Validate student_id exists
@@ -538,7 +528,7 @@ def save_csv_to_db_student_answers(uploaded_file):
         valid_student_ids = {row[0] for row in cursor.fetchall()}
         invalid_students = df[~df["student_id"].isin(valid_student_ids)]
         if len(invalid_students) > 0:
-            _safe_st_call(st.warning, f"⚠️ Ditemukan {len(invalid_students)} baris dengan student_id tidak valid. Baris ini diabaikan.")
+            st.warning(f"⚠️ Ditemukan {len(invalid_students)} baris dengan student_id tidak valid. Baris ini diabaikan.")
             df = df[df["student_id"].isin(valid_student_ids)]
 
         # Validate question_id exists
@@ -546,21 +536,20 @@ def save_csv_to_db_student_answers(uploaded_file):
         valid_question_ids = {row[0] for row in cursor.fetchall()}
         invalid_questions = df[~df["question_id"].isin(valid_question_ids)]
         if len(invalid_questions) > 0:
-            _safe_st_call(st.warning, f"⚠️ Ditemukan {len(invalid_questions)} baris dengan question_id tidak valid. Baris ini diabaikan.")
+            st.warning(f"⚠️ Ditemukan {len(invalid_questions)} baris dengan question_id tidak valid. Baris ini diabaikan.")
             df = df[df["question_id"].isin(valid_question_ids)]
 
         if len(df) == 0:
-            _safe_st_call(st.error, "❌ Tidak ada data valid untuk disimpan setelah validasi.")
+            st.error("❌ Tidak ada data valid untuk disimpan setelah validasi.")
             conn.close()
             return "❌ Tidak ada data valid untuk disimpan."
 
         # Setup progress bar
         total_rows = len(df)
-        progress_bar = _safe_st_call(st.progress, 0)
-        status_text = _safe_st_call(st.empty)
+        progress_bar = st.progress(0)
+        status_text = st.empty()
 
         # Insert/update rows
-        print(f"[Import] Starting import of {total_rows} rows...")
         cursor.execute("BEGIN")
         for idx, row in df.iterrows():
             try:
@@ -592,202 +581,42 @@ def save_csv_to_db_student_answers(uploaded_file):
                 print(f"[read_csv] Error processing row {idx}: {exc_row}")
                 continue
             finally:
-                # Update progress bar safely
-                if progress_bar and status_text:
-                    try:
-                        progress = (idx + 1) / total_rows
-                        progress_bar.progress(progress)
-                        status_text.text(f"Memproses: {idx + 1}/{total_rows} baris...")
-                    except:
-                        pass
-                
-                # Log progress every 50 rows
-                if (idx + 1) % 50 == 0:
-                    print(f"[Import] Progress: {idx + 1}/{total_rows} rows...")
+                progress = (idx + 1) / total_rows
+                progress_bar.progress(progress)
+                status_text.text(f"Memproses: {idx + 1}/{total_rows} baris...")
 
-        # CRITICAL: Commit data IMMEDIATELY after import loop
         conn.commit()
-        print(f"[Import] Data committed: {success_count} inserted, {update_count} updated")
-        
-        # Clean up progress bar
-        if progress_bar:
-            try:
-                progress_bar.empty()
-            except:
-                pass
-        if status_text:
-            try:
-                status_text.empty()
-            except:
-                pass
-
-        # Get unique student IDs from uploaded data
-        uploaded_student_ids = df['student_id'].unique().tolist()
+        progress_bar.empty()
+        status_text.empty()
+        conn.close()
 
         # Summary
-        _safe_st_call(st.success, "✅ Data berhasil diproses!")
-        try:
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("📥 Data Baru", success_count)
-            with col2:
-                st.metric("🔄 Data Diupdate", update_count)
-            with col3:
-                st.metric("⚠️ Diabaikan", len(invalid_answers) + len(invalid_students) + len(invalid_questions))
-            with col4:
-                st.metric("❌ Error", error_count)
-        except Exception as e:
-            print(f"[UI] Cannot display metrics: {e}")
+        st.success("✅ Data berhasil diproses!")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("📥 Data Baru", success_count)
+        with col2:
+            st.metric("🔄 Data Diupdate", update_count)
+        with col3:
+            st.metric("⚠️ Diabaikan", len(invalid_answers) + len(invalid_students) + len(invalid_questions))
+        with col4:
+            st.metric("❌ Error", error_count)
 
         if bad_rows:
-            try:
-                with st.expander("🔍 Baris yang error (preview)"):
-                    st.write(bad_rows[:20])
-            except Exception as e:
-                print(f"[UI] Cannot display error rows: {e}")
+            with st.expander("🔍 Baris yang error (preview)"):
+                st.write(bad_rows[:20])
 
         # preview
-        try:
-            with st.expander("📊 Detail Upload"):
-                st.write(f"**Total baris diproses:** {total_rows}")
-                st.write(f"**Siswa unik:** {df['student_id'].nunique()}")
-                st.write(f"**Soal dijawab:** {df['question_id'].nunique()}")
-                st.write("**Preview 5 baris pertama:**")
-                st.dataframe(df[["student_id", "question_id", "answer"]].head(), use_container_width=True)
-        except Exception as e:
-            print(f"[UI] Cannot display upload details: {e}")
+        with st.expander("📊 Detail Upload"):
+            st.write(f"**Total baris diproses:** {total_rows}")
+            st.write(f"**Siswa unik:** {df['student_id'].nunique()}")
+            st.write(f"**Soal dijawab:** {df['question_id'].nunique()}")
+            st.write("**Preview 5 baris pertama:**")
+            st.dataframe(df[["student_id", "question_id", "answer"]].head(), use_container_width=True)
 
-        # =======================
-        # 🧮 AUTO-CALCULATE HOLLAND + ANP
-        # =======================
-        # Wrap entire calculation in try-except to prevent data loss
-        calculated_students = []
-        failed_students = []
-        skipped_students = []
-        
-        try:
-            _safe_st_call(st.markdown, "---")
-            _safe_st_call(st.subheader, "🧮 Memproses Perhitungan Holland + ANP")
-            
-            calc_progress = _safe_st_call(st.progress, 0)
-            calc_status = _safe_st_call(st.empty)
-            
-            calculator = HollandCalculator()
-            print(f"[Calculate] Starting Holland calculation for {len(uploaded_student_ids)} students...")
-            
-            for idx, student_id in enumerate(uploaded_student_ids):
-                try:
-                    if calc_status:
-                        try:
-                            calc_status.text(f"Menghitung siswa {idx + 1}/{len(uploaded_student_ids)} (ID: {student_id})...")
-                        except:
-                            pass
-                    
-                    # Check if student has enough answers
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT COUNT(*) FROM student_answers WHERE student_id = ?", (student_id,))
-                    answer_count = cursor.fetchone()[0]
-                    
-                    if answer_count < 10:  # minimum threshold
-                        skipped_students.append((student_id, f"Hanya {answer_count} jawaban"))
-                        print(f"[Calculate] Student {student_id} skipped: only {answer_count} answers")
-                        continue
-                    
-                    # Calculate Holland + ANP
-                    result = calculator.process_test_completion(student_id)
-                    
-                    if result and result.get('recommended_major'):
-                        calculated_students.append({
-                            'student_id': student_id,
-                            'holland_code': result['holland_code'],
-                            'major': result['recommended_major']
-                        })
-                        print(f"[Calculate] Student {student_id} calculated: {result['holland_code']} -> {result['recommended_major']}")
-                    else:
-                        failed_students.append((student_id, "Tidak ada rekomendasi"))
-                        print(f"[Calculate] Student {student_id} failed: no recommendation")
-                        
-                except Exception as calc_error:
-                    failed_students.append((student_id, str(calc_error)))
-                    print(f"[Calculate] Error for student {student_id}: {calc_error}")
-                finally:
-                    if calc_progress:
-                        try:
-                            calc_progress.progress((idx + 1) / len(uploaded_student_ids))
-                        except:
-                            pass
-            
-            # Clean up progress indicators
-            if calc_progress:
-                try:
-                    calc_progress.empty()
-                except:
-                    pass
-            if calc_status:
-                try:
-                    calc_status.empty()
-                except:
-                    pass
-            
-            print(f"[Calculate] Calculation completed: {len(calculated_students)} success, {len(failed_students)} failed, {len(skipped_students)} skipped")
-            
-            # Display calculation results
-            _safe_st_call(st.success, "✅ Perhitungan selesai!")
-            
-            try:
-                col_calc1, col_calc2, col_calc3 = st.columns(3)
-                with col_calc1:
-                    st.metric("✅ Berhasil Dihitung", len(calculated_students))
-                with col_calc2:
-                    st.metric("⚠️ Dilewati", len(skipped_students))
-                with col_calc3:
-                    st.metric("❌ Gagal", len(failed_students))
-            except Exception as e:
-                print(f"[UI] Cannot display calculation metrics: {e}")
-            
-            if calculated_students:
-                try:
-                    with st.expander("📋 Hasil Perhitungan (Preview 10 siswa pertama)"):
-                        calc_df = pd.DataFrame(calculated_students)
-                        st.dataframe(calc_df.head(10), use_container_width=True)
-                except Exception as e:
-                    print(f"[UI] Cannot display calculation results: {e}")
-            
-            if skipped_students:
-                try:
-                    with st.expander(f"⚠️ Siswa Dilewati ({len(skipped_students)})"):
-                        st.write("Siswa berikut tidak memiliki cukup jawaban untuk dihitung:")
-                        for sid, reason in skipped_students[:10]:
-                            st.write(f"- Student ID {sid}: {reason}")
-                except Exception as e:
-                    print(f"[UI] Cannot display skipped students: {e}")
-            
-            if failed_students:
-                try:
-                    with st.expander(f"❌ Siswa Gagal Dihitung ({len(failed_students)})"):
-                        for sid, error_msg in failed_students[:10]:
-                            st.write(f"- Student ID {sid}: {error_msg}")
-                except Exception as e:
-                    print(f"[UI] Cannot display failed students: {e}")
-        
-        except Exception as calc_exception:
-            # If calculation fails entirely, data is already saved!
-            print(f"[Calculate] CRITICAL ERROR in calculation: {calc_exception}")
-            print(traceback.format_exc())
-            _safe_st_call(st.warning, f"⚠️ Data tersimpan, tapi perhitungan Holland gagal: {calc_exception}")
-        
-        finally:
-            # Always close connection
-            if conn:
-                try:
-                    conn.close()
-                except:
-                    pass
-
-        return f"✅ Upload selesai. Data: {success_count} baru, {update_count} update. Perhitungan: {len(calculated_students)} berhasil, {len(failed_students)} gagal."
+        return f"✅ Data jawaban siswa berhasil dimasukkan ke database. Baru: {success_count}, Update: {update_count}, Errors: {error_count}"
 
     except Exception as e:
-        print("[Import] CRITICAL ERROR during import:")
         print(traceback.format_exc())
         if conn:
             try:
@@ -795,5 +624,5 @@ def save_csv_to_db_student_answers(uploaded_file):
                 conn.close()
             except:
                 pass
-        _safe_st_call(st.error, f"❌ Terjadi kesalahan saat memproses file: {e}")
+        st.error(f"❌ Terjadi kesalahan saat memproses file: {e}")
         return f"❌ Error: {e}"

@@ -103,13 +103,13 @@ def _handle_answer_submission(engine: CATHollandEngine, question_id: int, answer
 #  Halaman Tes
 # ==============================
 check_login()
-st.set_page_config(page_title="Tes Minat Bakat", page_icon="📝", layout="wide", initial_sidebar_state="collapsed")
-
 conn = connection()
 
 if st.session_state.role != 'student':
     st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
     st.stop()
+
+st.set_page_config(page_title="Tes Minat Bakat", page_icon="📝", layout="wide")
 
 cursor = conn.cursor()
 cursor.execute('SELECT COUNT(*) FROM test_results WHERE student_id = ?', (st.session_state.user_id,))
@@ -134,6 +134,9 @@ if 'cat_test_session' not in st.session_state or \
 session_state = st.session_state['cat_test_session']
 if session_state['question_start'] is None and session_state['current_question_id']:
     session_state['question_start'] = time.time()
+
+st.title("📝 Tes Minat Bakat Holland (CAT)")
+st.markdown("---")
 
 progress = len(session_state['answers'])
 st.progress(min(1.0, progress / session_state['max_questions']))

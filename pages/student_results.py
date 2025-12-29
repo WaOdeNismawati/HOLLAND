@@ -8,8 +8,6 @@ from utils.auth import check_login
 from utils.timezone import convert_utc_to_local
 from utils.config import connection
 
-st.set_page_config(page_title="Hasil Tes", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
-
 # Cek login & koneksi database
 check_login()
 conn = connection()
@@ -17,6 +15,12 @@ conn = connection()
 if st.session_state.role != 'student':
     st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
     st.stop()
+
+st.set_page_config(page_title="Hasil Tes", page_icon="📊", layout="wide")
+
+# Main content
+st.title("📊 Hasil Tes Minat Bakat Anda")
+st.markdown("---")
 
 cursor = conn.cursor()
 

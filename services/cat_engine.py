@@ -5,26 +5,13 @@ from database.db_manager import DatabaseManager
 
 
 class CATHollandEngine:
-    def __init__(self, min_items: int = 18, max_items: Optional[int] = None,
+    def __init__(self, min_items: int = 18, max_items: int = 40,
                  target_se: float = 0.35, learning_rate: float = 0.5):
         self.min_items = min_items
         self.max_items = max_items
         self.target_se = target_se
         self.learning_rate = learning_rate
         self.question_bank = self._load_questions()
-        self.total_questions = len(self.question_bank)
-        self.require_full_bank = max_items is None
-
-        if self.require_full_bank:
-            self.active_max_items = self.total_questions
-        else:
-            if self.total_questions and max_items is not None:
-                self.active_max_items = min(max_items, self.total_questions)
-            else:
-                self.active_max_items = max_items
-
-        if not self.active_max_items:
-            self.active_max_items = self.total_questions
 
     def _load_questions(self) -> Dict[int, Dict]:
         db = DatabaseManager()
@@ -70,7 +57,7 @@ class CATHollandEngine:
             'question_start': None,
             'completed': False,
             'result': None,
-            'max_questions': self.active_max_items,
+            'max_questions': self.max_items,
             'se': None
         }
 
@@ -116,9 +103,7 @@ class CATHollandEngine:
     def should_stop(self, answered: int, current_se: Optional[float]) -> bool:
         if answered == 0:
             return False
-        if self.require_full_bank:
-            return answered >= self.total_questions
-        if self.active_max_items and answered >= self.active_max_items:
+        if answered >= self.max_items:
             return True
         if answered >= self.min_items and current_se is not None and current_se <= self.target_se:
             return True
