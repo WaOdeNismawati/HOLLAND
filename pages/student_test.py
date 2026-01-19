@@ -1,4 +1,3 @@
-import math
 import time
 
 import streamlit as st
@@ -8,8 +7,29 @@ from utils.holland_calculator import HollandCalculator
 from utils.config import connection
 from services.cat_engine import CATHollandEngine
 from database.db_manager import DatabaseManager
+from utils.styles import apply_dark_theme, render_sidebar, page_header
 
+# Page config
+st.set_page_config(page_title="Assessemnt Minat Bakat, Siswa", page_icon="📝", layout="wide")
 
+# Apply dark theme
+apply_dark_theme()
+
+# Check access
+check_login()
+if st.session_state.role != 'student':
+    st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
+    st.stop()
+
+# Render sidebar
+render_sidebar(current_page="student_test")
+
+# Database connection
+conn = connection()
+cursor = conn.cursor()
+
+# Page header
+page_header("Assessemnt Minat Bakat, Siswa", f"Selamat datang, {st.session_state.full_name}")
 ANSWER_LABELS = {
     1: "1 - Sangat Tidak Setuju",
     2: "2 - Tidak Setuju",
@@ -54,8 +74,6 @@ def _finalize_test():
     calculator = HollandCalculator()
     result = calculator.process_test_completion(
         session_state['student_id'],
-        theta=session_state['theta'],
-        theta_se=session_state.get('se'),
         total_items=len(session_state['answers'])
     )
     session_state['result'] = result
@@ -79,37 +97,26 @@ def _handle_answer_submission(engine: CATHollandEngine, question_id: int, answer
         'response_time': response_time
     })
     session_state['asked_ids'].append(question_id)
+    
+    # Update current index untuk soal berikutnya
+    session_state['current_index'] += 1
 
-    update = engine.update_theta(session_state['theta'], question, answer_value)
-    session_state['theta'] = update['theta']
-    session_state['information'] += update['information_gain']
-    session_state['theta_history'].append(update['theta'])
-    session_state['se'] = (1 / math.sqrt(session_state['information'])) if session_state['information'] > 0 else None
-
-    next_question = engine.select_next_question(session_state['theta'], session_state['asked_ids'])
+    # Pilih soal berikutnya dari urutan acak
+    next_question = engine.select_next_question(session_state)
     if next_question:
         session_state['current_question_id'] = next_question['id']
         session_state['question_start'] = time.time()
     else:
         session_state['completed'] = True
 
-    if engine.should_stop(len(session_state['answers']), session_state.get('se')):
+    # Cek apakah sudah selesai
+    if engine.should_stop(len(session_state['answers']), session_state):
         session_state['completed'] = True
 
     st.rerun()
 
 
-# ==============================
-#  Halaman Tes
-# ==============================
-check_login()
-conn = connection()
 
-if st.session_state.role != 'student':
-    st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
-    st.stop()
-
-st.set_page_config(page_title="Tes Minat Bakat", page_icon="📝", layout="wide")
 
 cursor = conn.cursor()
 cursor.execute('SELECT COUNT(*) FROM test_results WHERE student_id = ?', (st.session_state.user_id,))
@@ -135,19 +142,17 @@ session_state = st.session_state['cat_test_session']
 if session_state['question_start'] is None and session_state['current_question_id']:
     session_state['question_start'] = time.time()
 
-st.title("📝 Tes Minat Bakat Holland (CAT)")
+
 st.markdown("---")
 
 progress = len(session_state['answers'])
-st.progress(min(1.0, progress / session_state['max_questions']))
+total_questions = session_state['max_questions']
+st.progress(min(1.0, progress / total_questions))
 
 col_info, col_controls = st.columns([3, 1])
 with col_info:
-    st.metric("Jumlah Soal Terjawab", f"{progress}")
-    st.metric("Estimasi Kemampuan (θ)", f"{session_state['theta']:.2f}")
+    st.metric("Soal Terjawab", f"{progress} / {total_questions}")
 with col_controls:
-    se_display = session_state.get('se')
-    st.metric("Standard Error", f"{se_display:.3f}" if se_display else "-" )
     if st.button("🔄 Ulangi Tes", use_container_width=True):
         _reset_cat_session(engine)
         st.rerun()
@@ -156,9 +161,9 @@ st.markdown("---")
 
 if not session_state['completed'] and session_state['current_question_id']:
     question = engine.get_question(session_state['current_question_id'])
-    st.subheader(f"Soal {progress + 1}")
+    st.subheader(f"Soal {progress + 1} dari {total_questions}")
     st.write(question['question_text'])
-    st.caption(f"Tipe Holland: {question['holland_type']} | Batas waktu saran: {question['time_limit_seconds']} detik")
+    st.caption(f"Tipe: {question['holland_type']}")
 
     with st.form("cat_question_form"):
         answer_value = st.radio(
@@ -174,7 +179,7 @@ if not session_state['completed'] and session_state['current_question_id']:
     if submitted:
         _handle_answer_submission(engine, question['id'], int(answer_value))
 else:
-    st.info("Tes adaptif selesai. Simpan hasil untuk melihat rekomendasi.")
+    st.info("Tes selesai. Klik tombol di bawah untuk melihat rekomendasi jurusan Anda.")
     if session_state.get('result') is None:
         if st.button("🚀 Selesaikan Tes & Proses Hasil", type="primary", use_container_width=True):
             with st.spinner("Memproses hasil tes..."):

@@ -3,27 +3,29 @@ import pandas as pd
 import json
 import plotly.express as px
 from database.db_manager import DatabaseManager
-# from utils.auth import check_login
+from utils.auth import check_login
 from utils.config import connection
+from utils.styles import apply_dark_theme, render_sidebar, page_header
 from datetime import datetime, date
 
-# Page config (letakkan dulu sebelum elemen UI lain)
+# Page config
 st.set_page_config(page_title="Monitoring Hasil Tes", page_icon="📊", layout="wide")
+apply_dark_theme()
 
-# Database connection
-# db_manager = DatabaseManager()
-# conn = db_manager.get_connection()
-conn = connection()
-
-# Pastikan session_state.role ada (jangan crash kalau belum di-set)
-user_role = st.session_state.get("role", None)
-if user_role != 'admin':
+# Check login & access
+check_login()
+if st.session_state.get("role") != 'admin':
     st.error("Akses ditolak! Halaman ini hanya untuk admin.")
     st.stop()
 
-# Main content
-st.title("📊 Monitoring Hasil Tes Siswa")
-st.markdown("---")
+# Sidebar
+render_sidebar(current_page="test_monitoring")
+
+# Database connection
+conn = connection()
+
+# Page header
+page_header("Monitoring Hasil Tes", "Lihat dan analisis hasil tes siswa")
 
 cursor = conn.cursor()
 
@@ -316,113 +318,5 @@ if results_data:
             st.plotly_chart(fig_student, use_container_width=True)
         else:
             st.info("Skor Holland tidak tersedia untuk siswa ini.")
-
-        st.markdown("### 📘 Detail Perhitungan")
-        tab_holland, tab_anp, tab_download = st.tabs([
-            "📊 Holland Detail",
-            "🧠 ANP Detail",
-            "⬇️ Unduh Detail"
-        ])
-
-        with tab_holland:
-            st.write("#### Skor RIASEC Lengkap")
-            if holland_scores:
-                st.table(pd.DataFrame(list(holland_scores.items()), columns=['Tipe Holland', 'Skor']).sort_values('Tipe Holland'))
-            else:
-                st.info("Tidak ada data skor untuk ditampilkan.")
-            st.write("#### Penjelasan")
-            st.info("Nilai di atas merupakan hasil normalisasi dari semua jawaban siswa per dimensi RIASEC.")
-
-        with tab_anp:
-            anp_data = student_data.get('anp_results') or {}
-            if not anp_data:
-                st.warning("Data ANP belum tersedia untuk siswa ini.")
-            else:
-                calc_details = anp_data.get('calculation_details', {}) if isinstance(anp_data, dict) else {}
-                criteria_priorities = calc_details.get('criteria_priorities', {}) if isinstance(calc_details, dict) else {}
-                pairwise_matrix = calc_details.get('pairwise_matrix', []) if isinstance(calc_details, dict) else []
-                top_majors = anp_data.get('top_5_majors', []) if isinstance(anp_data, dict) else []
-
-                ac1, ac2 = st.columns(2)
-                with ac1:
-                    st.metric("Total Jurusan Dianalisis", anp_data.get('total_analyzed', 0) if isinstance(anp_data, dict) else 0)
-                with ac2:
-                    cr_value = calc_details.get('consistency_ratio', 0.0) if isinstance(calc_details, dict) else 0.0
-                    st.metric("Consistency Ratio", f"{cr_value:.4f}")
-
-                if criteria_priorities:
-                    priorities_df = pd.DataFrame([
-                        {'Kriteria': k, 'Bobot': v, 'Persentase': v * 100}
-                        for k, v in criteria_priorities.items()
-                    ]).sort_values('Bobot', ascending=False)
-                    st.write("#### Bobot Prioritas Kriteria")
-                    st.dataframe(priorities_df, hide_index=True, use_container_width=True)
-
-                if pairwise_matrix:
-                    riasec_labels = ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']
-                    try:
-                        pairwise_df = pd.DataFrame(pairwise_matrix, columns=riasec_labels, index=riasec_labels)
-                        st.write("#### Matriks Perbandingan Kriteria (Saaty Scale)")
-                        st.dataframe(pairwise_df.style.format("{:.3f}"))
-                    except Exception:
-                        st.info("Format matriks pasangan tidak sesuai untuk ditampilkan sebagai tabel.")
-
-                if top_majors:
-                    st.write("#### Detil Alternatif (Top 5 Jurusan)")
-                    normalized_entries = []
-                    for entry in top_majors:
-                        if isinstance(entry, dict):
-                            normalized_entries.append(entry)
-                        elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
-                            data = entry[1] if isinstance(entry[1], dict) else {}
-                            data['major_name'] = entry[0]
-                            normalized_entries.append(data)
-
-                    ranking_rows = []
-                    for idx, info in enumerate(normalized_entries, 1):
-                        ranking_rows.append({
-                            'Rank': idx,
-                            'Jurusan': info.get('major_name', 'N/A'),
-                            'Skor ANP': info.get('anp_score', 0.0)
-                        })
-                    if ranking_rows:
-                        ranking_df = pd.DataFrame(ranking_rows)
-                        st.dataframe(ranking_df, hide_index=True, use_container_width=True)
-
-                    for info in normalized_entries:
-                        with st.expander(f"Detail {info.get('major_name', 'Jurusan')}"):
-                            criteria_weights = info.get('criteria_weights', {}) if isinstance(info, dict) else {}
-                            if criteria_weights:
-                                cw_df = pd.DataFrame([
-                                    {'Kriteria': k, 'Kontribusi': v}
-                                    for k, v in criteria_weights.items()
-                                ]).sort_values('Kontribusi', ascending=False)
-                                st.write("Kontribusi Kriteria terhadap jurusan ini:")
-                                st.table(cw_df)
-                            profile = info.get('riasec_profile', {}) if isinstance(info, dict) else {}
-                            if profile:
-                                st.write("Profil RIASEC Jurusan:")
-                                st.json(profile)
-
-        with tab_download:
-            report_payload = {
-                'student': {
-                    'name': student_data.get('full_name'),
-                    'class': student_data.get('class_name'),
-                    'completed_at': student_data.get('completed_at'),
-                    'recommended_major': student_data.get('recommended_major')
-                },
-                'top_3_types': student_data.get('top_3_types'),
-                'holland_scores': student_data.get('holland_scores'),
-                'anp_results': student_data.get('anp_results')
-            }
-            report_bytes = json.dumps(report_payload, indent=2).encode('utf-8')
-            st.download_button(
-                label="📄 Download Detail Hasil (JSON)",
-                data=report_bytes,
-                file_name=f"hasil_detail_{(student_data.get('full_name') or 'student').replace(' ', '_').lower()}.json",
-                mime="application/json"
-            )
-
-# Tutup koneksi DB
+            
 conn.close()

@@ -7,8 +7,13 @@ import numpy as np
 from utils.auth import check_login
 from utils.timezone import convert_utc_to_local
 from utils.config import connection
+from utils.styles import apply_dark_theme, render_sidebar, page_header
 
-# Cek login & koneksi database
+# Page config
+st.set_page_config(page_title="Hasil Tes", page_icon="📊", layout="wide")
+apply_dark_theme()
+
+# Check login & connection
 check_login()
 conn = connection()
 
@@ -16,11 +21,11 @@ if st.session_state.role != 'student':
     st.error("Akses ditolak! Halaman ini hanya untuk siswa.")
     st.stop()
 
-st.set_page_config(page_title="Hasil Tes", page_icon="📊", layout="wide")
+# Sidebar
+render_sidebar(current_page="student_results")
 
-# Main content
-st.title("📊 Hasil Tes Minat Bakat Anda")
-st.markdown("---")
+# Page header
+page_header("Hasil Tes Minat Bakat", "Analisis profil RIASEC dan rekomendasi jurusan Anda")
 
 cursor = conn.cursor()
 
@@ -75,7 +80,7 @@ if not anp_weights and 'anp_results' in anp_results:
 major_rankings = anp_results.get('major_rankings', [])
 if not major_rankings and 'anp_results' in anp_results:
     nested_rankings = anp_results.get('anp_results', {}).get('ranked_majors', [])
-    major_rankings = [[item[0], item[1]['hybrid_score']] for item in nested_rankings if len(item) >= 2]
+    major_rankings = [[item[0], item[1].get('hybrid_score', item[1].get('anp_score', 0))] for item in nested_rankings if len(item) >= 2]
 
 # Get calculation details
 calc_details = anp_results.get('anp_results', {}) if 'anp_results' in anp_results else anp_results
@@ -171,11 +176,11 @@ for i, holland_type in enumerate(top_3_types):
         score = holland_scores[holland_type]
         
         st.markdown(f"""
-        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; border: 2px solid #dee2e6;">
+        <div class="card" style="text-align: center;">
             <div style="font-size: 2em;">{desc['icon']}</div>
-            <h4 style="margin: 10px 0 5px 0; color: #495057;">#{i+1} {desc['title']}</h4>
-            <p style="font-size: 0.9em; color: #6c757d; margin: 5px 0;">{desc['desc']}</p>
-            <div style="background-color: #007bff; color: white; padding: 5px; border-radius: 5px; margin-top: 10px;">
+            <h4 style="margin: 10px 0 5px 0; color: #1e3a8a;">#{i+1} {desc['title']}</h4>
+            <p style="font-size: 0.9em; color: #475569; margin: 5px 0;">{desc['desc']}</p>
+            <div style="background-color: #1e3a8a; color: white; padding: 5px; border-radius: 5px; margin-top: 10px;">
                 <strong>Skor: {score}</strong>
             </div>
         </div>
@@ -324,13 +329,28 @@ if anp_results and isinstance(anp_results, dict):
     
     # TAB 3: Detail Perhitungan
     with tab3:
-        st.write("### 🔢 Tahapan Perhitungan ANP")
+        st.write("### 🔢 Tahapan Perhitungan (Pre-filtered ANP)")
         
+        st.info("""
+        Metode yang digunakan adalah **Pre-filtered ANP** yang menggabungkan:
+        1. **Holland Score**: Normalisasi jawaban tes.
+        2. **Cosine Similarity Filter**: Menyaring jurusan yang paling relevan.
+        3. **Analytic Network Process (ANP)**: Meranking jurusan terpilih dengan presisi tinggi.
+        """)
+
         # Step-by-step explanation
-        with st.expander("📝 Step 1: Pairwise Comparison Matrix", expanded=True):
+        with st.expander("🔍 Step 1: Pre-Filtering (Cosine Similarity)", expanded=True):
+            st.write("""
+            - Sistem membandingkan profil RIASEC Anda dengan profil semua jurusan
+            - Menggunakan algoritma **Cosine Similarity** untuk mengukur kemiripan arah vektor
+            - Hanya **25 Jurusan Terbaik** yang diambil untuk diproses lebih lanjut ke tahap ANP
+            - Ini memastikan rekomendasi yang muncul memang relevan dengan minat Anda
+            """)
+
+        with st.expander("📝 Step 2: Pairwise Comparison Matrix (ANP)", expanded=True):
             st.write("""
             - Membandingkan setiap pasangan kriteria RIASEC
-            - Menggunakan rasio skor Anda yang dipetakan ke Saaty Scale (1-9)
+            - Menggunakan rasio skor Anda yang dikoreksi oleh **Teori Hexagon Holland**
             - Nilai > 1: kriteria baris lebih penting dari kolom
             - Nilai < 1: kriteria kolom lebih penting dari baris
             """)
@@ -349,7 +369,7 @@ Interpretasi: {riasec_types[0]} {"lebih penting" if matrix[0, 1] > 1 else "kuran
 dibanding {riasec_types[1]} dengan rasio {matrix[0, 1]:.2f}:1
                 """)
         
-        with st.expander("⚖️ Step 2: Priority Vector (Eigenvector)"):
+        with st.expander("⚖️ Step 3: Priority Vector (Eigenvector)"):
             st.write("""
             - Menghitung vektor eigen utama (principal eigenvector) dari matriks pairwise
             - Vektor ini merepresentasikan bobot/prioritas relatif setiap kriteria
@@ -362,7 +382,7 @@ dibanding {riasec_types[1]} dengan rasio {matrix[0, 1]:.2f}:1
                 for criterion, weight in criteria_priorities.items():
                     st.write(f"- {criterion}: {weight:.4f} ({weight/total*100:.2f}%)")
         
-        with st.expander("🏗️ Step 3: Supermatrix Construction"):
+        with st.expander("🏗️ Step 4: Supermatrix Construction"):
             st.write("""
             **Unweighted Supermatrix** menghubungkan:
             - Kriteria dengan kriteria (self-loop)
@@ -383,7 +403,7 @@ dibanding {riasec_types[1]} dengan rasio {matrix[0, 1]:.2f}:1
             if supermatrix_size:
                 st.info(f"Dimensi Supermatrix: {supermatrix_size} × {supermatrix_size}")
         
-        with st.expander("🔄 Step 4: Limit Supermatrix"):
+        with st.expander("🔄 Step 5: Limit Supermatrix"):
             st.write("""
             - Mengiterasi supermatrix: W^k (k → ∞)
             - Proses konvergen ketika W^(k+1) ≈ W^k
@@ -398,7 +418,7 @@ dibanding {riasec_types[1]} dengan rasio {matrix[0, 1]:.2f}:1
             else:
                 st.warning(f"⚠️ Tidak konvergen setelah {iterations} iterasi")
         
-        with st.expander("📊 Step 5: Ekstraksi Prioritas"):
+        with st.expander("📊 Step 6: Ekstraksi Prioritas"):
             st.write("""
             - Mengambil nilai prioritas alternatif dari kolom pertama limit matrix
             - Prioritas ini = skor akhir ANP untuk setiap jurusan
@@ -417,13 +437,13 @@ dibanding {riasec_types[1]} dengan rasio {matrix[0, 1]:.2f}:1
             
             # Top 20
             top_20 = major_rankings[:20]
-            df_majors = pd.DataFrame(top_20, columns=['Jurusan', 'Hybrid Score'])
+            df_majors = pd.DataFrame(top_20, columns=['Jurusan', 'ANP Score'])
             df_majors.index = range(1, len(df_majors) + 1)
-            df_majors['Hybrid Score'] = df_majors['Hybrid Score'].round(4)
+            df_majors['ANP Score'] = df_majors['ANP Score'].round(4)
             
             # Display with styling
             st.dataframe(
-                df_majors.style.background_gradient(subset=['Hybrid Score'], cmap='Greens'),
+                df_majors.style.background_gradient(subset=['ANP Score'], cmap='Greens'),
                 use_container_width=True
             )
             
@@ -439,14 +459,14 @@ dibanding {riasec_types[1]} dengan rasio {matrix[0, 1]:.2f}:1
                 textposition='auto'
             )])
             fig_majors.update_layout(
-                title="Top 10 Jurusan (Hybrid Score)",
-                xaxis_title="Hybrid Score",
+                title="Top 10 Jurusan (ANP Score)",
+                xaxis_title="ANP Score",
                 yaxis_title="Jurusan",
                 height=500,
                 yaxis={'categoryorder':'total ascending'},
-                paper_bgcolor='rgba(26, 26, 46, 0.5)',
-                plot_bgcolor='rgba(22, 33, 62, 0.3)',
-                font_color='#ffffff',
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font_color='#f1f5f9',
                 template='plotly_dark'
             )
             st.plotly_chart(fig_majors, use_container_width=True)

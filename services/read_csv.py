@@ -101,16 +101,8 @@ def _auto_rename_columns(cols):
         mapping[col_candidates["holland_type"]] = "holland_type"
     if "type" in col_candidates and "holland_type" not in mapping:
         mapping[col_candidates["type"]] = "holland_type"
-    if "difficulty" in col_candidates:
-        mapping[col_candidates["difficulty"]] = "difficulty"
-    if "discrimination" in col_candidates:
-        mapping[col_candidates["discrimination"]] = "discrimination"
-    if "guessing" in col_candidates:
-        mapping[col_candidates["guessing"]] = "guessing"
-    if "time_limit_seconds" in col_candidates:
-        mapping[col_candidates["time_limit_seconds"]] = "time_limit_seconds"
-    if "time_limit" in col_candidates and "time_limit_seconds" not in mapping:
-        mapping[col_candidates["time_limit"]] = "time_limit_seconds"
+    if "type" in col_candidates and "holland_type" not in mapping:
+        mapping[col_candidates["type"]] = "holland_type"
 
     # majors fields
     maj_candidates = ["major", "Major", "Major Name", "major_name"]
@@ -248,7 +240,8 @@ def save_csv_to_db_student(file_csv):
                     user_id = existing[0] if existing else None
 
                 if user_id:
-                    db.ensure_student_profile(cursor, user_id, full_name, class_name)
+                    # db.ensure_student_profile(cursor, user_id, full_name, class_name) # Removed
+                    pass
                 inserted += 1
 
             except Exception as exc_row:
@@ -300,20 +293,6 @@ def save_csv_to_db_soal(file_csv):
         df["question_text"] = df["question_text"].apply(_normalize_text)
         df["holland_type"] = df["holland_type"].apply(_normalize_text)
 
-        for col, default_val in [
-            ("difficulty", 0.0),
-            ("discrimination", 1.0),
-            ("guessing", 0.2),
-            ("time_limit_seconds", 60)
-        ]:
-            if col not in df.columns:
-                df[col] = default_val
-
-        df["difficulty"] = pd.to_numeric(df["difficulty"], errors="coerce").fillna(0.0)
-        df["discrimination"] = pd.to_numeric(df["discrimination"], errors="coerce").fillna(1.0)
-        df["guessing"] = pd.to_numeric(df["guessing"], errors="coerce").fillna(0.2).clip(0.0, 0.5)
-        df["time_limit_seconds"] = pd.to_numeric(df["time_limit_seconds"], errors="coerce").fillna(60).astype(int)
-
         # Map short codes to full
         mapping = {
             "R": "Realistic",
@@ -342,15 +321,11 @@ def save_csv_to_db_soal(file_csv):
 
                 cursor.execute("""
                     INSERT INTO questions (
-                        question_text, holland_type, difficulty, discrimination, guessing, time_limit_seconds, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        question_text, holland_type, created_at
+                    ) VALUES (?, ?, ?)
                 """, (
                     qtext,
                     qtype,
-                    float(row["difficulty"]),
-                    float(row["discrimination"]),
-                    float(row["guessing"]),
-                    int(row["time_limit_seconds"]),
                     now
                 ))
                 inserted += 1

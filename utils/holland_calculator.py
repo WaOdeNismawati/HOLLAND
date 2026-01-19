@@ -1,7 +1,7 @@
 import json
 import numpy as np
 from database.db_manager import DatabaseManager
-from .anp import calculate_anp_ranking, calculate_hybrid_ranking, ANPProcessor
+from .anp import calculate_prefiltered_anp, ANPProcessor
 from datetime import datetime, timedelta, timezone
 
 WITA = timezone(timedelta(hours=8))
@@ -123,7 +123,7 @@ class HollandCalculator:
     # ---------------------------------
     def save_test_result(self, student_id, scores, holland_code, top_3_types, 
                         recommended_major, anp_results=None, holland_filter=None,
-                        theta=None, theta_se=None, total_items=None):
+                        total_items=None):
         """Simpan hasil tes siswa ke tabel test_results"""
         db_manager = DatabaseManager()
         conn = db_manager.get_connection()
@@ -142,16 +142,14 @@ class HollandCalculator:
         cursor.execute('''
             INSERT INTO test_results (
                 student_id, top_3_types, recommended_major,
-                holland_scores, anp_results, theta, theta_se, total_items, completed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                holland_scores, anp_results, total_items, completed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (
             student_id,
             json.dumps(top_3_types),
             recommended_major if recommended_major else "Tidak ada rekomendasi",
             json.dumps(scores),
             json.dumps(combined_results),
-            theta,
-            theta_se,
             total_items,
             now_wita.strftime('%Y-%m-%d %H:%M:%S')
         ))
@@ -162,7 +160,7 @@ class HollandCalculator:
     # ---------------------------------
     # 5️⃣ Proses lengkap: Holland → ANP
     # ---------------------------------
-    def process_test_completion(self, student_id, theta=None, theta_se=None, total_items=None):
+    def process_test_completion(self, student_id, total_items=None):
         """
         Proses lengkap sistem rekomendasi:
         1. Hitung skor RIASEC (Holland)
@@ -172,61 +170,57 @@ class HollandCalculator:
         5. Simpan hasil
         """
         print(f"\n{'='*60}")
-        print(f"🔄 Memproses hasil tes untuk student_id: {student_id}")
+        print(f"[PROCESS] Memproses hasil tes untuk student_id: {student_id}")
         print(f"{'='*60}")
         
         # STEP 1: Hitung skor Holland
         scores = self.calculate_holland_scores(student_id)
-        print(f"\n📊 Skor RIASEC (Normalized):")
+        print(f"\n[RIASEC] Skor RIASEC (Normalized):")
         for riasec, score in scores.items():
             print(f"   {riasec:15s}: {score:.3f}")
         
         # STEP 2: Identifikasi Holland Code
         holland_code, top_3_types = self.get_holland_code(scores)
-        print(f"\n🎯 Holland Code: {holland_code}")
+        print(f"\n[CODE] Holland Code: {holland_code}")
         print(f"   Top 3 Types: {', '.join(top_3_types)}")
         
         # STEP 3: Filter jurusan menggunakan Holland
-        print(f"\n🔍 Filtering jurusan berdasarkan Holland similarity...")
+        print(f"\n[FILTER] Filtering jurusan berdasarkan Holland similarity...")
         holland_filter_result = self.filter_majors_by_holland(scores)
         filtered_majors = holland_filter_result['filtered_majors']
-        print(f"   ✅ {len(filtered_majors)} jurusan dianalisis (tanpa filter)")
-        print(f"   📋 Top similarity:")
+        print(f"   [OK] {len(filtered_majors)} jurusan dianalisis (tanpa filter)")
+        print(f"   [TOP] Top similarity:")
         for i, major in enumerate(filtered_majors[:5], 1):
             sim = holland_filter_result['similarity_scores'][major]
             print(f"      {i}. {major} (similarity: {sim:.3f})")
         
         # STEP 4: Ranking menggunakan ANP
-        print(f"\n🧮 Menjalankan ANP untuk ranking final...")
+        print(f"\n[ANP] Menjalankan Pre-filtered ANP untuk ranking final...")
         anp_results = None
         recommended_major = None
         
         try:
-            anp_results = calculate_anp_ranking(scores)
+            # Menggunakan Pre-filtered ANP: Cosine Similarity filter + Pure ANP
+            anp_results = calculate_prefiltered_anp(scores)
             
             if anp_results and anp_results['ranked_majors']:
                 recommended_major = anp_results['ranked_majors'][0][0]
                 
-                print(f"   ✅ Top 5 Rekomendasi:")
+                print(f"   [OK] Top 5 Rekomendasi:")
                 for i, (major, data) in enumerate(anp_results['ranked_majors'][:5], 1):
-                    hybrid_score = data.get('hybrid_score', data.get('anp_score', 0))
-                    weighted = data.get('weighted_score', 0)
+                    anp_score = data.get('anp_score', 0)
                     similarity = data.get('similarity', 0)
-                    print(f"      {i}. {major}: {hybrid_score:.4f} (weighted: {weighted:.3f}, sim: {similarity:.3f})")
-                    hybrid_score = data.get('hybrid_score', data.get('anp_score', 0))
-                    weighted = data.get('weighted_score', 0)
-                    similarity = data.get('similarity', 0)
-                    print(f"      {i}. {major}: {hybrid_score:.4f} (weighted: {weighted:.3f}, sim: {similarity:.3f})")
+                    print(f"      {i}. {major}: ANP={anp_score:.4f}, Similarity={similarity:.3f}")
             
         except Exception as e:
-            print(f"   ⚠️ Error ANP: {e}")
+            print(f"   [ERROR] Error ANP: {e}")
             # Fallback: ambil jurusan dengan similarity tertinggi
             if filtered_majors:
                 recommended_major = filtered_majors[0]
-                print(f"   ⚠️ Menggunakan fallback (Holland top-1): {recommended_major}")
+                print(f"   [WARN] Menggunakan fallback (Holland top-1): {recommended_major}")
         
         # STEP 5: Simpan hasil
-        print(f"\n💾 Menyimpan hasil ke database...")
+        print(f"\n[SAVE] Menyimpan hasil ke database...")
         self.save_test_result(
             student_id, 
             scores, 
@@ -235,13 +229,11 @@ class HollandCalculator:
             recommended_major, 
             anp_results,
             holland_filter_result,
-            theta,
-            theta_se,
             total_items
         )
         
-        print(f"✅ Proses selesai!")
-        print(f"🎓 Rekomendasi final: {recommended_major}")
+        print(f"[OK] Proses selesai!")
+        print(f"[RESULT] Rekomendasi final: {recommended_major}")
         print(f"{'='*60}\n")
         
         return {

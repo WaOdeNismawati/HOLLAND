@@ -55,13 +55,7 @@ class DatabaseManager:
                 VALUES (?, ?, ?, ?, ?)
             ''', ("student1", student_password, "student", "Siswa Contoh", "XII IPA 1"))
 
-            cursor.execute("SELECT id, full_name, class_name FROM users WHERE username = ?", ("student1",))
-            row = cursor.fetchone()
-            if row:
-                self.ensure_student_profile(cursor, row[0], row[1], row[2])
 
-        # Backfill profiles for any other students (if seeded elsewhere)
-        self.backfill_student_profiles(cursor)
 
     # ==============================
     #  SCHEMA MANAGEMENT
@@ -94,48 +88,4 @@ class DatabaseManager:
     # ==============================
     #  HELPER METHODS
     # ==============================
-    def ensure_student_profile(self, cursor, user_id, full_name, class_name=None):
-        if not user_id:
-            return
 
-        cursor.execute("SELECT 1 FROM student_profiles WHERE user_id = ?", (user_id,))
-        if cursor.fetchone():
-            return
-
-        first_name, last_name = self._split_full_name(full_name)
-        student_code = f"STU{user_id:04d}"
-        enrollment_date = datetime.now().date().isoformat()
-
-        cursor.execute('''
-            INSERT OR IGNORE INTO student_profiles (user_id, student_id, first_name, last_name, enrollment_date)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (user_id, student_code, first_name, last_name, enrollment_date))
-
-    def update_student_profile(self, cursor, user_id, full_name):
-        first_name, last_name = self._split_full_name(full_name)
-        cursor.execute('''
-            UPDATE student_profiles
-            SET first_name = ?, last_name = ?
-            WHERE user_id = ?
-        ''', (first_name, last_name, user_id))
-
-    def backfill_student_profiles(self, cursor):
-        cursor.execute('''
-            SELECT id, full_name, class_name
-            FROM users
-            WHERE role = 'student' AND id NOT IN (
-                SELECT user_id FROM student_profiles
-            )
-        ''')
-
-        for user_id, full_name, class_name in cursor.fetchall():
-            self.ensure_student_profile(cursor, user_id, full_name, class_name)
-
-    @staticmethod
-    def _split_full_name(full_name: str):
-        if not full_name:
-            return "Siswa", ""
-        parts = full_name.strip().split()
-        if len(parts) == 1:
-            return parts[0], ""
-        return parts[0], " ".join(parts[1:])

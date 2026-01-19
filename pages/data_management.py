@@ -3,30 +3,27 @@ import pandas as pd
 import sqlite3
 from database.db_manager import DatabaseManager
 from utils.auth import check_login, hash_password
+from utils.styles import apply_dark_theme, render_sidebar, page_header
 
 # Page config
-st.set_page_config(page_title="Manajemen Data", page_icon="🗃️", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Manajemen Data", page_icon="🗃️", layout="wide", initial_sidebar_state="expanded")
+apply_dark_theme()
 
 from components.upload_csv import (
     upload_csv_student_page,
     upload_csv_soal_page,
-    upload_csv_majors_page,
 )
-from services.read_csv import save_csv_to_db_student_answers
+
 
 HOLLAND_TYPES = [
     'Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional'
 ]
 MAJOR_TRAITS = ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']
 
-# ===============================
-# Cek login
-# ===============================
+# Check login
 check_login()
 
-# ===============================
 # Database connection
-# ===============================
 db_manager = DatabaseManager()
 conn = db_manager.get_connection()
 
@@ -34,12 +31,11 @@ if st.session_state.role != 'admin':
     st.error("Akses ditolak! Halaman ini hanya untuk admin.")
     st.stop()
 
+# Sidebar
+render_sidebar(current_page="data_management")
 
-# ===============================
-# Main content
-# ===============================
-st.title("🗃️ Manajemen Data")
-st.markdown("---")
+# Page header
+page_header("Manajemen Data", "Kelola data siswa, soal, dan jurusan")
 
 # Tabs untuk berbagai jenis data
 tab1, tab2, tab3 = st.tabs(["👥 Data Siswa", "📝 Data Soal", "📚 Data Alternatif (Jurusan)"])
@@ -175,23 +171,11 @@ with tab1:
                         st.rerun()
                     except Exception as e:
                         st.error(f"Gagal menghapus siswa: {e}")
-        # Tombol hapus semua data siswa
-        st.warning("⚠️ Hati-hati! Ini akan menghapus seluruh siswa, jawaban, dan hasil tes.")
-        if st.button("🗑️ Hapus Semua Data Siswa", key="delete_all_students"):
-            try:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM student_answers")  # hapus jawaban
-                cursor.execute("DELETE FROM test_results")     # hapus hasil tes
-                cursor.execute("DELETE FROM users WHERE role='student'")  # hapus siswa
-                conn.commit()
-                cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('student_answers','test_results','users')")
-                conn.commit()
-                st.success("Seluruh data siswa berhasil dihapus!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Gagal menghapus seluruh data siswa: {e}")
 
-        df_students = pd.DataFrame(students_data, columns=['ID', 'Username', 'Nama Lengkap', 'Kelas', 'Tanggal Daftar', 'Status Tes'])
+        df_students = pd.DataFrame(
+            students_data,
+            columns=['ID', 'Username', 'Nama Lengkap', 'Kelas', 'Tanggal Daftar', 'Status Tes']
+        )
         st.subheader("📋 Daftar Siswa")
         st.dataframe(df_students, use_container_width=True)
     else:
@@ -210,10 +194,6 @@ with tab2:
         with st.form("form_add_question"):
             question_text = st.text_area("Teks Soal Baru")
             question_type = st.selectbox("Tipe Holland Baru", HOLLAND_TYPES)
-            difficulty_val = st.number_input("Tingkat Kesulitan (b)", value=0.0, step=0.1)
-            discrimination_val = st.number_input("Discrimination (a)", min_value=0.1, max_value=5.0, value=1.0, step=0.1)
-            guessing_val = st.number_input("Guessing (c)", min_value=0.0, max_value=0.5, value=0.2, step=0.05)
-            time_limit_val = st.number_input("Batas Waktu (detik)", min_value=15, max_value=300, value=60, step=5)
             submitted_add_question = st.form_submit_button("Simpan Soal")
 
         if submitted_add_question:
@@ -224,15 +204,11 @@ with tab2:
                     form_cursor = conn.cursor()
                     form_cursor.execute(
                         '''INSERT INTO questions (
-                            question_text, holland_type, difficulty, discrimination, guessing, time_limit_seconds
-                        ) VALUES (?, ?, ?, ?, ?, ?)''',
+                            question_text, holland_type
+                        ) VALUES (?, ?)''',
                         (
                             question_text.strip(),
-                            question_type,
-                            float(difficulty_val),
-                            float(discrimination_val),
-                            float(guessing_val),
-                            int(time_limit_val)
+                            question_type
                         )
                     )
                     conn.commit()
@@ -245,7 +221,7 @@ with tab2:
     # Tampilkan data soal
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, question_text, holland_type, difficulty, discrimination, guessing, time_limit_seconds
+        SELECT id, question_text, holland_type
         FROM questions ORDER BY id
     ''')
     questions_data = cursor.fetchall()
@@ -266,32 +242,7 @@ with tab2:
                     HOLLAND_TYPES,
                     index=HOLLAND_TYPES.index(selected_question[2])
                 )
-                updated_difficulty = st.number_input(
-                    "Tingkat Kesulitan (b) Edit",
-                    value=float(selected_question[3] or 0.0),
-                    step=0.1
-                )
-                updated_discrimination = st.number_input(
-                    "Discrimination (a) Edit",
-                    min_value=0.1,
-                    max_value=5.0,
-                    value=float(selected_question[4] or 1.0),
-                    step=0.1
-                )
-                updated_guessing = st.number_input(
-                    "Guessing (c) Edit",
-                    min_value=0.0,
-                    max_value=0.5,
-                    value=float(selected_question[5] or 0.2),
-                    step=0.05
-                )
-                updated_time_limit = st.number_input(
-                    "Batas Waktu (detik) Edit",
-                    min_value=15,
-                    max_value=300,
-                    value=int(selected_question[6] or 60),
-                    step=5
-                )
+                
                 submitted_edit_question = st.form_submit_button("Perbarui Soal")
 
             if submitted_edit_question:
@@ -300,17 +251,14 @@ with tab2:
                 else:
                     try:
                         form_cursor = conn.cursor()
+                        # We only update text and type, keeping other values via original data or ignoring them
                         form_cursor.execute(
                             '''UPDATE questions
-                               SET question_text=?, holland_type=?, difficulty=?, discrimination=?, guessing=?, time_limit_seconds=?
+                               SET question_text=?, holland_type=?
                                WHERE id=?''',
                             (
                                 updated_question_text.strip(),
                                 updated_question_type,
-                                float(updated_difficulty),
-                                float(updated_discrimination),
-                                float(updated_guessing),
-                                int(updated_time_limit),
                                 selected_question[0]
                             )
                         )
@@ -343,26 +291,9 @@ with tab2:
                     except Exception as e:
                         st.error(f"Gagal menghapus soal: {e}")
 
-        # Tombol hapus semua soal
-        st.warning("⚠️ Hati-hati! Ini akan menghapus seluruh data soal dan jawaban siswa terkait.")
-        if st.button("🗑️ Hapus Semua Data Soal", key="delete_all_questions"):
-            try:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM student_answers")  # hapus jawaban terkait
-                cursor.execute("DELETE FROM questions")  # hapus semua soal
-                conn.commit()
-                cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('student_answers','questions')")
-                conn.commit()
-                cursor.execute("VACUUM")
-                conn.commit()
-                st.success("Seluruh data soal dan jawaban terkait berhasil dihapus!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Gagal menghapus seluruh data soal: {e}")
-
         df_questions = pd.DataFrame(
             questions_data,
-            columns=['ID', 'Teks Soal', 'Tipe Holland', 'Difficulty', 'Discrimination', 'Guessing', 'Time Limit (s)']
+            columns=['ID', 'Teks Soal', 'Tipe Holland']
         )
         st.subheader("📋 Daftar Soal")
         st.dataframe(df_questions, use_container_width=True)
@@ -376,8 +307,7 @@ with tab2:
 with tab3:
     st.subheader("📚 Manajemen Data Alternatif (Jurusan)")
 
-    # Upload CSV jurusan
-    upload_csv_majors_page()
+    # upload_csv_majors_page() - Removed feature
 
     with st.expander("➕ Tambah Alternatif", expanded=False):
         with st.form("form_add_major"):
@@ -502,76 +432,11 @@ with tab3:
                         except Exception as e:
                             st.error(f"Gagal menghapus jurusan: {e}")
 
-            # Tombol hapus semua data
-            st.warning("⚠️ Hati-hati! Ini akan menghapus seluruh data alternatif jurusan.")
-            if st.button("🗑️ Hapus Semua Data Jurusan", type="secondary"):
-                try:
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM majors")
-                    conn.commit()
-                    cursor.execute("DELETE FROM sqlite_sequence WHERE name='majors'")
-                    conn.commit()
-                    st.success("Seluruh data jurusan berhasil dihapus!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Gagal menghapus seluruh data jurusan: {e}")
+                            st.error(f"Gagal menghapus jurusan: {e}")
         else:
             st.info("Belum ada data alternatif (jurusan).")
     except Exception as e:
         st.error(f"Terjadi kesalahan saat memuat data jurusan: {e}")
 
-# =======================
-# 📤 UPLOAD CSV JAWABAN
-# =======================
-st.subheader("📤 Upload Jawaban Siswa (CSV/Excel)")
-
-with st.expander("ℹ️ Format File CSV", expanded=False):
-    st.markdown("""
-    **Format 1 (Menggunakan student_id):**
-```
-    student_id,question_id,answer
-    1,1,4
-    1,2,5
-    2,1,3
-```
-    
-    **Format 2 (Menggunakan username):**
-```
-    username,question_id,answer
-    siswa001,1,4
-    siswa001,2,5
-    siswa002,1,3
-```
-    
-    **Keterangan:**
-    - `student_id` atau `username`: ID atau username siswa
-    - `question_id`: ID soal (1-60)
-    - `answer`: Jawaban siswa (1-5)
-    
-    **Catatan:**
-    - File bisa berformat `.csv`, `.xls`, atau `.xlsx`
-    - Jika ada duplikat (student_id + question_id sama), data lama akan diupdate
-    - Jawaban harus dalam rentang 1-5
-    """)
-    
-    # Template download
-    st.download_button(
-        label="📥 Download Template CSV",
-        data="student_id,question_id,answer\n1,1,4\n1,2,5\n1,3,3",
-        file_name="template_jawaban_siswa.csv",
-        mime="text/csv"
-    )
-
-with st.form("upload_form_answers"):
-    uploaded_file = st.file_uploader(
-        "Pilih file CSV/Excel jawaban siswa",
-        type=["csv", "xls", "xlsx"],
-        help="Upload file berisi jawaban siswa dalam format yang sesuai"
-    )
-    submit_upload = st.form_submit_button("📤 Upload & Proses", type="primary")
-
-if submit_upload and uploaded_file:
-    save_csv_to_db_student_answers(uploaded_file)
-
-st.markdown("---")
+        st.error(f"Terjadi kesalahan saat memuat data jurusan: {e}")
 conn.close()
