@@ -1,122 +1,246 @@
 import json
+import numpy as np
 from database.db_manager import DatabaseManager
-from .anp import recommend_majors
+from .anp import calculate_prefiltered_anp, ANPProcessor
+from datetime import datetime, timedelta, timezone
+
+WITA = timezone(timedelta(hours=8))
+now_wita = datetime.now(WITA)
+
 
 class HollandCalculator:
     def __init__(self):
-        self.holland_types = ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']
+        """Initialize Holland Calculator"""
+        self.holland_types = [
+            'Realistic', 'Investigative', 'Artistic',
+            'Social', 'Enterprising', 'Conventional'
+        ]
         
-        # Mapping Holland types ke jurusan
-        self.major_recommendations = {
-            ('Realistic', 'Investigative', 'Conventional'): 'Teknik Mesin',
-            ('Realistic', 'Investigative', 'Artistic'): 'Arsitektur',
-            ('Investigative', 'Realistic', 'Conventional'): 'Teknik Informatika',
-            ('Investigative', 'Social', 'Artistic'): 'Psikologi',
-            ('Artistic', 'Social', 'Enterprising'): 'Desain Komunikasi Visual',
-            ('Social', 'Enterprising', 'Conventional'): 'Manajemen',
-            ('Enterprising', 'Social', 'Conventional'): 'Administrasi Bisnis',
-            ('Conventional', 'Enterprising', 'Investigative'): 'Akuntansi',
-            ('Social', 'Artistic', 'Investigative'): 'Pendidikan',
-            ('Realistic', 'Conventional', 'Enterprising'): 'Teknik Sipil',
-            ('Investigative', 'Artistic', 'Social'): 'Kedokteran',
-            ('Artistic', 'Enterprising', 'Social'): 'Komunikasi',
-        }
-    
+        # Load data jurusan dari database
+        anp = ANPProcessor()
+        try:
+            self.majors_data = anp.load_majors_from_db()
+        except Exception as e:
+            print(f"Warning: Gagal memuat data majors - {e}")
+            self.majors_data = {}
+
+    # ---------------------------------
+    # 1️⃣ Hitung skor Holland (RIASEC)
+    # ---------------------------------
     def calculate_holland_scores(self, student_id):
-        """Hitung skor Holland berdasarkan jawaban siswa"""
+        """Hitung skor RIASEC siswa berdasarkan jawaban dari database"""
         db_manager = DatabaseManager()
         conn = db_manager.get_connection()
         cursor = conn.cursor()
-        
-        # Ambil semua jawaban siswa dengan tipe Holland
+
         cursor.execute('''
             SELECT q.holland_type, sa.answer
             FROM student_answers sa
             JOIN questions q ON sa.question_id = q.id
             WHERE sa.student_id = ?
         ''', (student_id,))
-        
+
         answers = cursor.fetchall()
         conn.close()
-        
+
         # Inisialisasi skor
-        scores = {holland_type: 0 for holland_type in self.holland_types}
-        
-        # Hitung skor untuk setiap tipe
+        scores = {h: 0 for h in self.holland_types}
         for holland_type, answer in answers:
             scores[holland_type] += answer
+
+        # Normalisasi ke rentang 0–1
+        max_score = max(scores.values()) if max(scores.values()) > 0 else 1
+        normalized_scores = {k: round(v / max_score, 3) for k, v in scores.items()}
+
+        return normalized_scores
+
+    # ---------------------------------
+    # 2️⃣ Identifikasi Holland Code
+    # ---------------------------------
+    def get_holland_code(self, scores):
+        """
+        Dapatkan Holland Code 3 huruf (misal: RIA, ISE)
+        Berdasarkan 3 tipe tertinggi
+        """
+        sorted_types = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        top_3 = [t[0] for t in sorted_types[:3]]
         
-        return scores
-    
-    def get_top_3_types(self, scores):
-        """Dapatkan 3 tipe Holland dengan skor tertinggi"""
-        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        return [item[0] for item in sorted_scores[:3]]
-    
-    def recommend_major(self, top_3_types):
-        """Rekomendasikan jurusan berdasarkan 3 tipe teratas"""
-        top_3_tuple = tuple(top_3_types)
-        
-        # Cari rekomendasi yang cocok
-        for key, major in self.major_recommendations.items():
-            if set(key) == set(top_3_tuple):
-                return major
-        
-        # Jika tidak ada yang cocok persis, berikan rekomendasi berdasarkan tipe pertama
-        primary_type = top_3_types[0]
-        fallback_recommendations = {
-            'Realistic': 'Teknik Mesin',
-            'Investigative': 'Teknik Informatika',
-            'Artistic': 'Desain Komunikasi Visual',
-            'Social': 'Psikologi',
-            'Enterprising': 'Manajemen',
-            'Conventional': 'Akuntansi'
+        # Konversi ke kode huruf
+        code_map = {
+            'Realistic': 'R',
+            'Investigative': 'I',
+            'Artistic': 'A',
+            'Social': 'S',
+            'Enterprising': 'E',
+            'Conventional': 'C'
         }
         
-        return fallback_recommendations.get(primary_type, 'Manajemen Umum')
-    
-    def save_test_result(self, student_id, scores, top_3_types, recommended_major, anp_results=None):
-        """Simpan hasil tes ke database dengan data ANP"""
+        holland_code = ''.join([code_map[t] for t in top_3])
+        return holland_code, top_3
+
+    # ---------------------------------
+    # 3️⃣ Filter jurusan berdasarkan Holland
+    # ---------------------------------
+    def filter_majors_by_holland(self, student_scores):
+        """
+        Hitung kemiripan Holland untuk SEMUA jurusan tanpa melakukan filtering.
+        Mengembalikan daftar jurusan terurut berdasarkan similarity agar
+        tetap bisa dianalisis, namun seluruh jurusan akan dipakai dalam perhitungan.
+        """
+        if not self.majors_data:
+            print("⚠️ Data jurusan kosong.")
+            return {
+                'filtered_majors': [],
+                'similarity_scores': {},
+                'total_filtered': 0
+            }
+
+        similarities = {}
+        student_vector = np.array([student_scores[h] for h in self.holland_types])
+        norm_student = np.linalg.norm(student_vector)
+
+        for major, profile in self.majors_data.items():
+            major_vector = np.array([profile[h] for h in self.holland_types])
+            norm_major = np.linalg.norm(major_vector)
+
+            if norm_student == 0 or norm_major == 0:
+                sim = 0.0
+            else:
+                sim = float(np.dot(major_vector, student_vector) / (norm_major * norm_student))
+
+            similarities[major] = round(sim, 3)
+
+        ranked = sorted(similarities.items(), key=lambda x: x[1], reverse=True)
+
+        return {
+            'filtered_majors': [major for major, _ in ranked],  # berisi SEMUA jurusan
+            'similarity_scores': dict(ranked),
+            'total_filtered': len(ranked)
+        }
+
+    # ---------------------------------
+    # 4️⃣ Simpan hasil ke database
+    # ---------------------------------
+    def save_test_result(self, student_id, scores, holland_code, top_3_types, 
+                        recommended_major, anp_results=None, holland_filter=None,
+                        total_items=None):
+        """Simpan hasil tes siswa ke tabel test_results"""
         db_manager = DatabaseManager()
         conn = db_manager.get_connection()
         cursor = conn.cursor()
-        
-        # Hapus hasil sebelumnya jika ada
+
+        # Hapus data lama
         cursor.execute('DELETE FROM test_results WHERE student_id = ?', (student_id,))
-        
-        # Prepare ANP data for storage
-        anp_data = json.dumps(anp_results) if anp_results else None
-        
-        # Simpan hasil baru
+
+        # Gabungkan hasil Holland dan ANP
+        combined_results = {
+            'holland_code': holland_code,
+            'holland_filter': holland_filter,
+            'anp_results': anp_results
+        }
+
         cursor.execute('''
-            INSERT INTO test_results (student_id, top_3_types, recommended_major, holland_scores, anp_results)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (student_id, json.dumps(top_3_types), recommended_major, json.dumps(scores), anp_data))
-        
+            INSERT INTO test_results (
+                student_id, top_3_types, recommended_major,
+                holland_scores, anp_results, total_items, completed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            student_id,
+            json.dumps(top_3_types),
+            recommended_major if recommended_major else "Tidak ada rekomendasi",
+            json.dumps(scores),
+            json.dumps(combined_results),
+            total_items,
+            now_wita.strftime('%Y-%m-%d %H:%M:%S')
+        ))
+
         conn.commit()
         conn.close()
-    
-    def process_test_completion(self, student_id):
-        """Proses lengkap setelah siswa menyelesaikan tes dengan ANP integration"""
+
+    # ---------------------------------
+    # 5️⃣ Proses lengkap: Holland → ANP
+    # ---------------------------------
+    def process_test_completion(self, student_id, total_items=None):
+        """
+        Proses lengkap sistem rekomendasi:
+        1. Hitung skor RIASEC (Holland)
+        2. Identifikasi Holland Code
+        3. Filter jurusan berdasarkan similarity Holland
+        4. Ranking jurusan hasil filter menggunakan ANP
+        5. Simpan hasil
+        """
+        print(f"\n{'='*60}")
+        print(f"[PROCESS] Memproses hasil tes untuk student_id: {student_id}")
+        print(f"{'='*60}")
+        
+        # STEP 1: Hitung skor Holland
         scores = self.calculate_holland_scores(student_id)
-        top_3_types = self.get_top_3_types(scores)
+        print(f"\n[RIASEC] Skor RIASEC (Normalized):")
+        for riasec, score in scores.items():
+            print(f"   {riasec:15s}: {score:.3f}")
         
-        # Traditional recommendation (kept for compatibility)
-        traditional_major = self.recommend_major(top_3_types)
+        # STEP 2: Identifikasi Holland Code
+        holland_code, top_3_types = self.get_holland_code(scores)
+        print(f"\n[CODE] Holland Code: {holland_code}")
+        print(f"   Top 3 Types: {', '.join(top_3_types)}")
         
-        # ANP-based recommendations
-        anp_results = recommend_majors(scores)
+        # STEP 3: Filter jurusan menggunakan Holland
+        print(f"\n[FILTER] Filtering jurusan berdasarkan Holland similarity...")
+        holland_filter_result = self.filter_majors_by_holland(scores)
+        filtered_majors = holland_filter_result['filtered_majors']
+        print(f"   [OK] {len(filtered_majors)} jurusan dianalisis (tanpa filter)")
+        print(f"   [TOP] Top similarity:")
+        for i, major in enumerate(filtered_majors[:5], 1):
+            sim = holland_filter_result['similarity_scores'][major]
+            print(f"      {i}. {major} (similarity: {sim:.3f})")
         
-        # Get top ANP recommendation
-        anp_top_major = anp_results['top_5_majors'][0][0] if anp_results['top_5_majors'] else traditional_major
+        # STEP 4: Ranking menggunakan ANP
+        print(f"\n[ANP] Menjalankan Pre-filtered ANP untuk ranking final...")
+        anp_results = None
+        recommended_major = None
         
-        # Save complete results
-        self.save_test_result(student_id, scores, top_3_types, anp_top_major, anp_results)
+        try:
+            # Menggunakan Pre-filtered ANP: Cosine Similarity filter + Pure ANP
+            anp_results = calculate_prefiltered_anp(scores)
+            
+            if anp_results and anp_results['ranked_majors']:
+                recommended_major = anp_results['ranked_majors'][0][0]
+                
+                print(f"   [OK] Top 5 Rekomendasi:")
+                for i, (major, data) in enumerate(anp_results['ranked_majors'][:5], 1):
+                    anp_score = data.get('anp_score', 0)
+                    similarity = data.get('similarity', 0)
+                    print(f"      {i}. {major}: ANP={anp_score:.4f}, Similarity={similarity:.3f}")
+            
+        except Exception as e:
+            print(f"   [ERROR] Error ANP: {e}")
+            # Fallback: ambil jurusan dengan similarity tertinggi
+            if filtered_majors:
+                recommended_major = filtered_majors[0]
+                print(f"   [WARN] Menggunakan fallback (Holland top-1): {recommended_major}")
+        
+        # STEP 5: Simpan hasil
+        print(f"\n[SAVE] Menyimpan hasil ke database...")
+        self.save_test_result(
+            student_id, 
+            scores, 
+            holland_code,
+            top_3_types, 
+            recommended_major, 
+            anp_results,
+            holland_filter_result,
+            total_items
+        )
+        
+        print(f"[OK] Proses selesai!")
+        print(f"[RESULT] Rekomendasi final: {recommended_major}")
+        print(f"{'='*60}\n")
         
         return {
             'scores': scores,
+            'holland_code': holland_code,
             'top_3_types': top_3_types,
-            'recommended_major': anp_top_major,
-            'traditional_major': traditional_major,
+            'recommended_major': recommended_major,
+            'holland_filter': holland_filter_result,
             'anp_results': anp_results
         }
