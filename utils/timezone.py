@@ -10,14 +10,14 @@ def convert_utc_to_local(utc_dt_str):
     if not utc_dt_str:
         return None
 
-    local_tz_str = st.session_state.get('timezone', 'Asia/Jakarta')
+    local_tz_str = st.session_state.get('timezone', 'Asia/Makassar')
 
     try:
         # Konversi string ke objek datetime
         utc_dt = datetime.strptime(utc_dt_str, '%Y-%m-%d %H:%M:%S')
 
         # Atur timezone ke UTC
-        utc_tz = pytz.timezone('UTC')
+        utc_tz = pytz.timezone('UTC+8')
         utc_dt = utc_tz.localize(utc_dt)
 
         # Konversi ke timezone lokal dari session state
@@ -28,7 +28,7 @@ def convert_utc_to_local(utc_dt_str):
         return local_dt.strftime('%d %B %Y, %H:%M')
     except pytz.UnknownTimeZoneError:
         # Fallback jika timezone di session state tidak valid
-        local_tz = pytz.timezone('Asia/Jakarta')
+        local_tz = pytz.timezone('Asia/Makassar')
         local_dt = utc_dt.astimezone(local_tz)
         return local_dt.strftime('%d %B %Y, %H:%M')
     except ValueError:

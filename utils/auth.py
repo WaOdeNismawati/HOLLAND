@@ -16,13 +16,18 @@ def authenticate_user(username, password):
     user = cursor.fetchone()
     conn.close()
     
-    if user and bcrypt.checkpw(password.encode('utf-8'), user[2]):
-        return user
+    if user:
+        stored_password = user[2]
+        if isinstance(stored_password, str):
+            stored_password = stored_password.encode('utf-8')
+        if stored_password and bcrypt.checkpw(password.encode('utf-8'), stored_password):
+            return user
     return None
 
 def hash_password(password):
     """Hash password menggunakan bcrypt"""
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    return hashed.decode('utf-8')
 
 def check_login():
     """Cek apakah user sudah login"""
