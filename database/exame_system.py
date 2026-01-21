@@ -26,26 +26,18 @@ class ExamSystemDB:
         """Create all database tables"""
         print("Running migrations...")
         # Users + legacy-compatible tables
+        
+        # Disable foreign keys temporarily to avoid constraint issues
+        self.conn.execute("PRAGMA foreign_keys = OFF")
 
-        self.cursor.execute("""
-            DROP TABLE exams
-        """)
-
-        self.cursor.execute("""
-            DROP TABLE exam_questions
-        """)
-
-        self.cursor.execute("""
-            DROP TABLE exam_attempts
-        """)
-
-        self.cursor.execute("""
-            DROP TABLE exam_answer_choices
-        """)
-
-        self.cursor.execute("""
-            DROP TABLE exam_student_answers
-        """)
+        self.cursor.execute("DROP TABLE IF EXISTS exams")
+        self.cursor.execute("DROP TABLE IF EXISTS exam_questions")
+        self.cursor.execute("DROP TABLE IF EXISTS exam_attempts")
+        self.cursor.execute("DROP TABLE IF EXISTS exam_answer_choices")
+        self.cursor.execute("DROP TABLE IF EXISTS exam_student_answers")
+        
+        # Re-enable foreign keys
+        self.conn.execute("PRAGMA foreign_keys = ON")
 
 
         self.cursor.execute("""
@@ -309,7 +301,8 @@ def main():
 
     args = parser.parse_args()
 
-    db = ExamSystemDB(args.db)
+    conn = sqlite3.connect(args.db)
+    db = ExamSystemDB(conn)
     
     try:
         db.connect()
