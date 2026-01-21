@@ -75,8 +75,7 @@ with tab1:
                     )
                     form_cursor.execute("SELECT id, full_name, class_name FROM users WHERE username=?", (new_username,))
                     user_row = form_cursor.fetchone()
-                    if user_row:
-                        db_manager.ensure_student_profile(form_cursor, user_row[0], new_full_name, new_class_name)
+
                     conn.commit()
                     st.success("Siswa baru berhasil ditambahkan.")
                     st.rerun()
@@ -141,7 +140,7 @@ with tab1:
                                     selected_student[0]
                                 )
                             )
-                        db_manager.update_student_profile(form_cursor, selected_student[0], updated_full_name.strip())
+
                         conn.commit()
                         st.success("Data siswa berhasil diperbarui.")
                         st.rerun()
@@ -349,7 +348,6 @@ with tab3:
                     st.error("Nama jurusan sudah terdaftar.")
                 except Exception as e:
                     st.error(f"Gagal menambahkan jurusan: {e}")
-
     # Tampilkan data jurusan dari tabel majors
     cursor = conn.cursor()
     try:
@@ -357,11 +355,6 @@ with tab3:
         majors_data = cursor.fetchall()
 
         if majors_data:
-            cols = [desc[0] for desc in cursor.description]
-            df_majors = pd.DataFrame(majors_data, columns=cols)
-            st.subheader("📋 Daftar Alternatif (Jurusan)")
-            st.dataframe(df_majors, use_container_width=True)
-
             major_options = {
                 f"{row[0]} - {row[1]}": row for row in majors_data
             }
@@ -432,11 +425,14 @@ with tab3:
                         except Exception as e:
                             st.error(f"Gagal menghapus jurusan: {e}")
 
-                            st.error(f"Gagal menghapus jurusan: {e}")
+            cols = [desc[0] for desc in cursor.description]
+            df_majors = pd.DataFrame(majors_data, columns=cols)
+            st.subheader("📋 Daftar Alternatif (Jurusan)")
+            st.dataframe(df_majors, use_container_width=True)
+
         else:
             st.info("Belum ada data alternatif (jurusan).")
     except Exception as e:
         st.error(f"Terjadi kesalahan saat memuat data jurusan: {e}")
-
-        st.error(f"Terjadi kesalahan saat memuat data jurusan: {e}")
+    
 conn.close()

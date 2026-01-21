@@ -11,6 +11,7 @@ class DatabaseManager:
 
     def __init__(self, db_path="exam_system.db"):
         self.db_path = db_path
+        print("dbManager:", db_path)
         self._ensure_schema()
         self._ensure_default_records()
 
@@ -64,7 +65,8 @@ class DatabaseManager:
         if DatabaseManager._schema_initialized:
             return
 
-        exam_db = ExamSystemDB(self.db_path)
+        conn = self.get_connection()
+        exam_db = ExamSystemDB(conn)
         exam_db.connect()
         try:
             exam_db.migrate()
@@ -84,8 +86,3 @@ class DatabaseManager:
         conn.close()
 
         DatabaseManager._defaults_seeded = True
-
-    # ==============================
-    #  HELPER METHODS
-    # ==============================
-

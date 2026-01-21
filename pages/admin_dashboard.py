@@ -6,7 +6,7 @@ from database.db_manager import DatabaseManager
 from utils.auth import check_login
 from utils.config import connection
 from utils.styles import apply_dark_theme, render_sidebar, page_header
-from services.export_manager import ExportManager
+
 
 # Page config
 st.set_page_config(page_title="Dashboard Admin", page_icon="📊", layout="wide")
@@ -30,42 +30,6 @@ cursor = conn.cursor()
 # Page header
 page_header("Dashboard Admin", f"Selamat datang, {st.session_state.full_name}")
 
-# --- Export Buttons ---
-col_dl1, col_dl2 = st.columns(2)
-with col_dl1:
-    if st.button("📥 Download Laporan Lengkap (Semua Siswa)", type="primary", use_container_width=True):
-        with st.spinner("Menghasilkan file Laporan..."):
-            try:
-                exporter = ExportManager()
-                excel_data = exporter.generate_verification_excel()
-                st.download_button(
-                    label="⬇️ Klik untuk Unduh Laporan",
-                    data=excel_data,
-                    file_name="laporan_verifikasi_anp_lengkap.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="dl_btn_report"
-                )
-                st.toast("Laporan siap diunduh!", icon="✅")
-            except Exception as e:
-                st.error(f"Gagal: {e}")
-
-with col_dl2:
-    if st.button("🧮 Download Template Rumus Manual", use_container_width=True):
-        with st.spinner("Membuat Template Rumus..."):
-            try:
-                exporter = ExportManager()
-                template_data = exporter.generate_anp_template_excel()
-                st.download_button(
-                    label="⬇️ Klik untuk Unduh Template",
-                    data=template_data,
-                    file_name="template_rumus_anp_manual.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="dl_btn_template"
-                )
-                st.toast("Template siap!", icon="✅")
-            except Exception as e:
-                st.error(f"Gagal: {e}")
-# ---------------------
 
 # Stats queries
 cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'student'")

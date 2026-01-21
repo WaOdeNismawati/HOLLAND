@@ -236,28 +236,6 @@ class ANPProcessor:
         return similarity_matrix, alternative_names
 
     def build_supermatrix(self, riasec_scores, major_weights, criteria_block, criteria_priorities, alpha=0.0):
-        """
-        Bangun supermatrix ANP dengan inner dependency (TANPA alternative similarity).
-        
-        Struktur Supermatrix (DIPERBAIKI):
-        ┌─────────────────────────────────────────┐
-        │  [Kriteria×Kriteria]  [Kriteria×Alt]    │
-        │  W₁₁ (inner dep)      W₁₂ (feedback)    │
-        │                                         │
-        │  [Alternatif×Krit]    [0]               │
-        │  W₂₁ (pengaruh)       W₂₂ = 0           │
-        └─────────────────────────────────────────┘
-        
-        PERBAIKAN: W₂₂ diset ke 0 untuk menghindari averaging effect
-        yang menyebabkan skor jurusan menjadi seragam.
-        
-        Args:
-            riasec_scores: Skor RIASEC siswa (normalized)
-            major_weights: Profil RIASEC setiap jurusan
-            criteria_block: Matriks kriteria yang sudah dinormalisasi
-            criteria_priorities: Bobot prioritas kriteria
-            alpha: Tidak digunakan (kept for backward compatibility)
-        """
         criteria_names = self.riasec_types
         alternative_names = list(major_weights.keys())
 
@@ -299,12 +277,6 @@ class ANPProcessor:
                 crit_weight = criteria_priorities[i] * major_weights[major][criterion]
                 supermatrix[i, n_criteria + j] = crit_weight
 
-        # =====================================================
-        # BLOK W₂₂: ALTERNATIF × ALTERNATIF
-        # PERBAIKAN: Set ke 0 (tidak ada hubungan antar alternatif)
-        # Ini mencegah averaging effect yang membuat skor seragam
-        # =====================================================
-        # supermatrix[n_criteria:, n_criteria:] = 0 (sudah 0 dari np.zeros)
 
         # =====================================================
         # NORMALISASI KOLOM
@@ -314,8 +286,6 @@ class ANPProcessor:
             if col_sum > 0:
                 supermatrix[:, j] = supermatrix[:, j] / col_sum
             else:
-                # Untuk kolom alternatif-alternatif yang 0, biarkan 0
-                # Ini akan diabaikan saat ekstraksi prioritas
                 pass
 
         return supermatrix, criteria_names, alternative_names
@@ -343,8 +313,8 @@ class ANPProcessor:
         Hitung skor ANP untuk jurusan
         
         Args:
-            riasec_scores: Normalized RIASEC scores dari siswa (dict)
-            filtered_majors: List nama jurusan yang sudah difilter (optional)
+            riasec_scores: Normalized RIASEC scores dari siswa 
+            filtered_majors: List nama jurusan yang sudah difilter 
         
         Returns:
             Dictionary berisi ranking jurusan dengan skor ANP
@@ -431,7 +401,7 @@ class ANPProcessor:
             'ranked_majors': ranked,
             'total_analyzed': len(ranked),
             'student_riasec_profile': riasec_scores,
-            'methodology': 'ANP dengan Inner Dependency (Diperbaiki)',
+            'methodology': 'ANP dengan Inner Dependency',
             'top_5_majors': top_5,
             'calculation_details': {
                 'pairwise_matrix': pairwise_matrix.tolist(),

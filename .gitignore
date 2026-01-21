@@ -8,7 +8,6 @@ __pycache__/
 venv/
 
 # Database files
-*.db
 *.sqlite3
 
 # Cache files

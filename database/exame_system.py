@@ -8,14 +8,12 @@ import bcrypt
 
 
 class ExamSystemDB:
-    def __init__(self, db_name: str = "exam_system.db"):
-        self.db_name = db_name
-        self.conn = None
+    def __init__(self, conn_db):
+        self.conn = conn_db
         self.cursor = None
 
     def connect(self):
         """Establish database connection"""
-        self.conn = sqlite3.connect(self.db_name)
         self.cursor = self.conn.cursor()
         self.conn.execute("PRAGMA foreign_keys = ON")
 
@@ -28,6 +26,28 @@ class ExamSystemDB:
         """Create all database tables"""
         print("Running migrations...")
         # Users + legacy-compatible tables
+
+        self.cursor.execute("""
+            DROP TABLE exams
+        """)
+
+        self.cursor.execute("""
+            DROP TABLE exam_questions
+        """)
+
+        self.cursor.execute("""
+            DROP TABLE exam_attempts
+        """)
+
+        self.cursor.execute("""
+            DROP TABLE exam_answer_choices
+        """)
+
+        self.cursor.execute("""
+            DROP TABLE exam_student_answers
+        """)
+
+
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +73,6 @@ class ExamSystemDB:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        # Removed IRT columns check (discrimination, difficulty, guessing, time_limit)
 
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS majors (
@@ -161,30 +180,12 @@ class ExamSystemDB:
                 ).fetchone()[0]
 
 
-
-        # Legacy Holland questions
-        holland_questions = [
-            ("Saya menikmati memperbaiki atau merakit sesuatu", 'Realistic'),
-            ("Saya suka memecahkan masalah logika atau matematis", 'Investigative'),
-            ("Saya senang membuat karya seni atau musik", 'Artistic'),
-            ("Saya menikmati membantu orang lain", 'Social'),
-            ("Saya percaya diri memimpin sebuah tim", 'Enterprising'),
-            ("Saya rapi dan menyukai hal-hal terstruktur", 'Conventional')
-        ]
-
         existing_questions = self.cursor.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
         if existing_questions == 0:
             self.cursor.executemany(
                 "INSERT INTO questions (question_text, holland_type) VALUES (?, ?)",
                 holland_questions
             )
-
-        # Majors seed data
-        majors_seed = [
-            ('Teknik Informatika', 0.7, 0.8, 0.3, 0.4, 0.6, 0.5),
-            ('Desain Komunikasi Visual', 0.3, 0.4, 0.9, 0.5, 0.4, 0.3),
-            ('Kedokteran', 0.5, 0.8, 0.4, 0.7, 0.4, 0.4)
-        ]
 
         existing_majors = self.cursor.execute("SELECT COUNT(*) FROM majors").fetchone()[0]
         if existing_majors == 0:
