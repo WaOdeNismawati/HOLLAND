@@ -35,7 +35,9 @@ class ExamSystemDB:
         self.cursor.execute("DROP TABLE IF EXISTS exam_attempts")
         self.cursor.execute("DROP TABLE IF EXISTS exam_answer_choices")
         self.cursor.execute("DROP TABLE IF EXISTS exam_student_answers")
-        
+        self.cursor.execute("DROP TABLE IF EXISTS student_profiles")
+       
+    
         # Re-enable foreign keys
         self.conn.execute("PRAGMA foreign_keys = ON")
 

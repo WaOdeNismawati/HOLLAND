@@ -37,6 +37,15 @@ cursor.execute('''
 ''', (st.session_state.user_id,))
 
 result = cursor.fetchone()
+
+# Fetch all student answers joined with questions
+cursor.execute('''
+    SELECT q.id, q.question_text, q.holland_type, sa.answer, sa.response_time
+    FROM questions q
+    LEFT JOIN student_answers sa ON q.id = sa.question_id AND sa.student_id = ?
+    ORDER BY q.id
+''', (st.session_state.user_id,))
+student_answers_data = cursor.fetchall()
 conn.close()
 
 if not result:
@@ -194,19 +203,16 @@ st.markdown("---")
 if anp_results and isinstance(anp_results, dict):
     st.subheader("🔬 Proses Perhitungan ANP (Analytic Network Process)")
     
-    calc_details = anp_results.get('calculation_details', {})
-    
     # Tabs untuk berbagai aspek perhitungan
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3 = st.tabs([
         "📊 Ringkasan Hasil", 
-        "⚖️ Bobot Kriteria", 
-        "🔢 Detail Perhitungan",
+        "📝 Detail Jawaban",
         "🏆 Ranking Lengkap"
     ])
     
     # TAB 1: Ringkasan Hasil
     with tab1:
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             st.metric(
@@ -216,8 +222,6 @@ if anp_results and isinstance(anp_results, dict):
             )
         
         with col2:
-            cr_value = calc_details.get('consistency_ratio', 0)
-            is_consistent = calc_details.get('is_consistent', False)
             st.metric(
                 "Consistency Ratio",
                 f"{consistency_ratio:.4f}" if consistency_ratio is not None else "N/A",
@@ -232,201 +236,65 @@ if anp_results and isinstance(anp_results, dict):
                 help="ANP + Weighted Score + Cosine Similarity"
             )
         
-        with col4:
-            st.metric(
-                "Status",
-                "✓ Konvergen" if converged else "⚠ Check",
-                help="Status konvergensi supermatrix"
-            )
-        
         st.markdown("---")
-        
-        # Penjelasan metodologi
-        st.success("""
-        **🎯 HYBRID WEIGHTED SCORING**
-        
-        Sistem ini menggabungkan kekuatan dari tiga metode:
-        
-        1. **ANP (Analytic Network Process)** untuk menghitung bobot kriteria RIASEC
-           - Skor RIASEC Anda dinormalisasi ke skala 0-1
-           - Dibuat **pairwise comparison matrix** dengan ratio antar skor
-           - Ratio otomatis di-clip ke skala Saaty (1/9 hingga 9)
-           - Menghitung priority vector menggunakan eigenvalue method
-        
-        2. **Weighted Scoring** untuk menghitung kesesuaian dengan jurusan
-           - Formula: Σ(bobot_kriteria_ANP × profil_jurusan × skor_siswa)
-        
-        3. **Cosine Similarity** untuk mengukur kemiripan pola profil
-           - Nilai 0-1 (semakin mendekati 1 = semakin mirip)
-        
-        4. **Hybrid Score** = 60% Weighted Score + 40% Cosine Similarity
-        
-        **Keunggulan:** Akurasi tinggi, diferensiasi jelas, dan performa cepat!
-        """)
-    
-    # TAB 2: Bobot Kriteria
+
+    # TAB 2: Detail Jawaban
     with tab2:
-        st.write("### 🎯 Bobot Prioritas Kriteria RIASEC")
-        
-        criteria_priorities = calc_details.get('criteria_priorities', {})
-        
-        if criteria_priorities:
-            col1, col2 = st.columns([2, 1])
+        st.write("### 📝 Detail Jawaban")
+        st.markdown("Berikut adalah rincian jawaban Anda untuk ke-60 soal tes minat bakat.")
+
+        if not student_answers_data:
+            st.warning("⚠️ Data jawaban tidak ditemukan.")
+        else:
+            # Map answers to labels
+            answer_labels = {
+                1: "1 - Sangat Tidak Setuju",
+                2: "2 - Tidak Setuju",
+                3: "3 - Netral",
+                4: "4 - Setuju",
+                5: "5 - Sangat Setuju"
+            }
             
-            with col1:
-                # Bar chart bobot kriteria
-                criteria_df = pd.DataFrame([
-                    {'Kriteria': k, 'Bobot': v} 
-                    for k, v in criteria_priorities.items()
-                ]).sort_values('Bobot', ascending=True)
-                
-                fig_criteria = px.bar(
-                    criteria_df, 
-                    x='Bobot', 
-                    y='Kriteria',
-                    orientation='h',
-                    color='Bobot',
-                    color_continuous_scale='Blues',
-                    title="Bobot Prioritas Kriteria"
-                )
-                fig_criteria.update_layout(height=400)
-                st.plotly_chart(fig_criteria, use_container_width=True)
+            # Prepare data for dataframe
+            answers_list = []
+            for row in student_answers_data:
+                q_id, q_text, q_type, q_ans, q_time = row
+                answers_list.append({
+                    "No": q_id,
+                    "Pertanyaan": q_text,
+                    "Tipe RIASEC": q_type,
+                    "Jawaban": answer_labels.get(q_ans, "Belum dijawab") if q_ans else "Belum dijawab",
+                    "Waktu (detik)": f"{q_time:.2f}" if q_time is not None else "0.00"
+                })
             
-            with col2:
-                st.write("**Tabel Bobot:**")
-                for i, (criterion, weight) in enumerate(
-                    sorted(criteria_priorities.items(), key=lambda x: x[1], reverse=True), 1
-                ):
-                    percentage = weight * 100
-                    st.write(f"{i}. **{criterion}**: {weight:.4f} ({percentage:.2f}%)")
-        
-        st.markdown("---")
-        
-        st.write("### 📐 Pairwise Comparison Matrix")
-        st.info("""
-        Matriks perbandingan berpasangan menggunakan **Saaty Scale (1-9)** untuk membandingkan 
-        setiap pasang kriteria berdasarkan skor RIASEC Anda.
-        """)
-        
-        pairwise_matrix = calc_details.get('pairwise_matrix', [])
-        if pairwise_matrix:
-            riasec_types = ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']
-            pairwise_df = pd.DataFrame(
-                pairwise_matrix,
-                columns=riasec_types,
-                index=riasec_types
+            df_answers = pd.DataFrame(answers_list)
+            
+            # Display stats
+            col_a, col_b, col_c = st.columns([1, 1, 2])
+            with col_a:
+                st.metric("Total Soal", len(df_answers))
+            with col_b:
+                answered_count = sum(1 for row in student_answers_data if row[3] is not None)
+                st.metric("Terjawab", answered_count)
+            
+            st.markdown("---")
+
+            # Display table with styling
+            st.dataframe(
+                df_answers,
+                column_config={
+                    "No": st.column_config.NumberColumn("No", width="small"),
+                    "Pertanyaan": st.column_config.TextColumn("Pertanyaan", width="large"),
+                    "Tipe RIASEC": st.column_config.TextColumn("Tipe RIASEC", width="medium"),
+                    "Jawaban": st.column_config.TextColumn("Jawaban", width="medium"),
+                    "Waktu (detik)": st.column_config.TextColumn("Waktu (detik)", width="small"),
+                },
+                hide_index=True,
+                use_container_width=True
             )
-            st.dataframe(pairwise_df.style.format("{:.4f}").background_gradient(cmap='RdYlGn', axis=None))
-            
-            # Consistency check
-            cr_value = calc_details.get('consistency_ratio', 0)
-            is_consistent = calc_details.get('is_consistent', False)
-            
-            if is_consistent:
-                st.success(f"✅ Matriks konsisten (CR = {cr_value:.4f} < 0.1)")
-            else:
-                st.warning(f"⚠️ Matriks kurang konsisten (CR = {cr_value:.4f} ≥ 0.1). Hasil tetap valid namun mungkin kurang optimal.")
     
-    # TAB 3: Detail Perhitungan
+    # TAB 3``: Ranking Lengkap
     with tab3:
-        st.write("### 🔢 Tahapan Perhitungan (Pre-filtered ANP)")
-        
-        st.info("""
-        Metode yang digunakan adalah **Pre-filtered ANP** yang menggabungkan:
-        1. **Holland Score**: Normalisasi jawaban tes.
-        2. **Cosine Similarity Filter**: Menyaring jurusan yang paling relevan.
-        3. **Analytic Network Process (ANP)**: Meranking jurusan terpilih dengan presisi tinggi.
-        """)
-
-        # Step-by-step explanation
-        with st.expander("🔍 Step 1: Pre-Filtering (Cosine Similarity)", expanded=True):
-            st.write("""
-            - Sistem membandingkan profil RIASEC Anda dengan profil semua jurusan
-            - Menggunakan algoritma **Cosine Similarity** untuk mengukur kemiripan arah vektor
-            - Hanya **25 Jurusan Terbaik** yang diambil untuk diproses lebih lanjut ke tahap ANP
-            - Ini memastikan rekomendasi yang muncul memang relevan dengan minat Anda
-            """)
-
-        with st.expander("📝 Step 2: Pairwise Comparison Matrix (ANP)", expanded=True):
-            st.write("""
-            - Membandingkan setiap pasangan kriteria RIASEC
-            - Menggunakan rasio skor Anda yang dikoreksi oleh **Teori Hexagon Holland**
-            - Nilai > 1: kriteria baris lebih penting dari kolom
-            - Nilai < 1: kriteria kolom lebih penting dari baris
-            """)
-            
-            if calc_details.get('pairwise_matrix'):
-                st.write("**Contoh interpretasi:**")
-                riasec_types = ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']
-                matrix = np.array(calc_details['pairwise_matrix'])
-                
-                # Show first comparison as example
-                st.code(f"""
-Perbandingan {riasec_types[0]} vs {riasec_types[1]}:
-Nilai = {matrix[0, 1]:.4f}
-
-Interpretasi: {riasec_types[0]} {"lebih penting" if matrix[0, 1] > 1 else "kurang penting"} 
-dibanding {riasec_types[1]} dengan rasio {matrix[0, 1]:.2f}:1
-                """)
-        
-        with st.expander("⚖️ Step 3: Priority Vector (Eigenvector)"):
-            st.write("""
-            - Menghitung vektor eigen utama (principal eigenvector) dari matriks pairwise
-            - Vektor ini merepresentasikan bobot/prioritas relatif setiap kriteria
-            - Dinormalisasi sehingga total bobot = 1.0
-            """)
-            
-            if criteria_priorities:
-                st.write("**Bobot Hasil:**")
-                total = sum(criteria_priorities.values())
-                for criterion, weight in criteria_priorities.items():
-                    st.write(f"- {criterion}: {weight:.4f} ({weight/total*100:.2f}%)")
-        
-        with st.expander("🏗️ Step 4: Supermatrix Construction"):
-            st.write("""
-            **Unweighted Supermatrix** menghubungkan:
-            - Kriteria dengan kriteria (self-loop)
-            - Alternatif (jurusan) dengan kriteria
-            
-            Struktur supermatrix:
-            ```
-            [C₁ C₂ ... Cₙ | A₁ A₂ ... Aₘ]
-            ────────────────────────────
-            C: Kriteria RIASEC (6)
-            A: Alternatif/Jurusan (n)
-            ```
-            
-            **Weighted Supermatrix** = Unweighted × Bobot Kriteria
-            """)
-            
-            supermatrix_size = calc_details.get('supermatrix_size', 0)
-            if supermatrix_size:
-                st.info(f"Dimensi Supermatrix: {supermatrix_size} × {supermatrix_size}")
-        
-        with st.expander("🔄 Step 5: Limit Supermatrix"):
-            st.write("""
-            - Mengiterasi supermatrix: W^k (k → ∞)
-            - Proses konvergen ketika W^(k+1) ≈ W^k
-            - Hasil: prioritas stabil untuk setiap alternatif
-            """)
-            
-            iterations = calc_details.get('iterations', 0)
-            converged = calc_details.get('converged', False)
-            
-            if converged:
-                st.success(f"✅ Konvergen pada iterasi ke-{iterations}")
-            else:
-                st.warning(f"⚠️ Tidak konvergen setelah {iterations} iterasi")
-        
-        with st.expander("📊 Step 6: Ekstraksi Prioritas"):
-            st.write("""
-            - Mengambil nilai prioritas alternatif dari kolom pertama limit matrix
-            - Prioritas ini = skor akhir ANP untuk setiap jurusan
-            - Jurusan diurutkan dari skor tertinggi ke terendah
-            """)
-    
-    # TAB 4: Ranking Lengkap
-    with tab4:
         st.write("### 🏆 Ranking Lengkap Semua Jurusan")
         
         top_5_majors = anp_results.get('top_5_majors', [])

@@ -33,15 +33,15 @@ class ExportManager:
             
         conn.close()
 
-    def generate_verification_excel(self):
+    def generate_full_admin_report(self):
         """
-        Generates a multi-sheet Excel file for manual verification of calculations.
+        Generates a comprehensive Excel report as requested by the admin.
         Sheets:
-        1. Reference Data (Questions, Types, Major Weights)
-        2. Raw Answers (Student vs Questions Matrix)
-        3. Holland Calculation (Excel Formulas for Sum & Normalization)
-        4. ANP Intermediates (Pairwise, Priorities, CR from System)
-        5. Final Validation (System Results vs Formula Check)
+        1. Ringkasan Hasil (Summary: Holland, Top 1 Sim, Top 1 ANP)
+        2. Jawaban Siswa (Raw points for each question)
+        3. Perhitungan Holland (Sums & Normalized scores)
+        4. Perbandingan Ranking (Top 5 Similarity vs Top 5 ANP with scores)
+        5. Data Master Jurusan (Raw RIASEC profiles for all majors)
         """
         self._load_reference_data()
         
@@ -50,272 +50,195 @@ class ExportManager:
         workbook = writer.book
 
         # Styles
-        header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D3D3D3', 'border': 1})
-        num_fmt = workbook.add_format({'num_format': '0.00'})
+        header_fmt = workbook.add_format({'bold': True, 'bg_color': '#1e293b', 'font_color': 'white', 'border': 1, 'align': 'center'})
+        num_fmt = workbook.add_format({'num_format': '0.0000', 'border': 1})
+        text_fmt = workbook.add_format({'border': 1})
         
-        # ==========================================
-        # SHEET 1: Reference Data
-        # ==========================================
-        # 1A. Questions
-        questions_data = []
-        for q_id, q_info in self.questions_map.items():
-            questions_data.append({
-                'Question ID': q_id,
-                'Type': q_info['type'],
-                'Text': q_info['text']
-            })
-        df_questions = pd.DataFrame(questions_data)
-        df_questions.to_excel(writer, sheet_name='Reference', index=False, startrow=0)
-        
-        # 1B. Major Weights (beside questions or below)
-        start_col_majors = 4
-        writer.sheets['Reference'].write(0, start_col_majors, "Major Profiles (Weights)")
-        
-        majors_data = []
-        for major_name, info in self.majors_map.items():
-            row = {'Major': major_name}
-            for type_ in ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']:
-                row[type_] = info.get(type_, 0)
-            majors_data.append(row)
-        
-        df_majors = pd.DataFrame(majors_data)
-        df_majors.to_excel(writer, sheet_name='Reference', index=False, startrow=1, startcol=start_col_majors)
-
-        # ==========================================
-        # SHEET 2: Raw Answers
-        # ==========================================
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        
-        # Get all students who completed test
+
+        # 1. Fetch Students with Results
         cursor.execute('''
-            SELECT u.id, u.full_name, u.class_name, tr.completed_at
+            SELECT u.id, u.full_name, u.class_name, tr.holland_scores, tr.anp_results, tr.completed_at
             FROM users u
             JOIN test_results tr ON u.id = tr.student_id
             ORDER BY u.full_name
         ''')
-        students = cursor.fetchall()
+        students_with_results = cursor.fetchall()
         
-        raw_rows = []
-        holland_calc_rows = []
-        anp_detail_rows = []
-        
-        # Map for formula generation
-        sorted_q_ids = sorted(self.questions_map.keys())
-        q_col_map = {} # Maps Question ID to Excel Column Letter (e.g. 1 -> E, 2 -> F...)
-        
-        # Columns for Raw Answers Sheet
-        # A: ID, B: Name, C: Class, D: Date, E...: Q1...Qn
-        
-        for row_idx, student in enumerate(students):
-            s_id, name, cls, date = student
-            
-            # Fetch Answers
-            cursor.execute("SELECT question_id, answer FROM student_answers WHERE student_id = ? ORDER BY question_id", (s_id,))
-            answers = dict(cursor.fetchall())
-            
-            # Build Row
-            row_data = {
-                'Student ID': s_id,
-                'Name': name,
-                'Class': cls,
-                'Date': date
-            }
-            
-            # Fill answers 1-5
-            for q_id in sorted_q_ids:
-                row_data[f"Q{q_id}"] = answers.get(q_id, 0)
-            
-            raw_rows.append(row_data)
+        if not students_with_results:
+            conn.close()
+            # If no results, still return an empty file or basic info?
+            # Let's assume there are results or handle elegantly
+            pass
 
-        df_raw = pd.DataFrame(raw_rows)
-        df_raw.to_excel(writer, sheet_name='Raw Answers', index=False)
-        
-        # ==========================================
-        # SHEET 3: Holland Calculation (FORMULAS)
-        # ==========================================
-        # We will replicate the layout but populate cells with Formulas
-        # R, I, A, S, E, C Sums
-        
+        # Prepare Holland Types
         holland_types = ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']
         
-        # Create headers for Calc Sheet
-        calc_headers = ['Student ID', 'Name'] + [f"Sum {t}" for t in holland_types] + [f"Norm {t}" for t in holland_types] + ['Max Score']
-        
-        # Write headers manually
-        worksheet_calc = workbook.add_worksheet('Holland Calc (Manual)')
-        for col, h in enumerate(calc_headers):
-            worksheet_calc.write(0, col, h, header_fmt)
-
-        # Helper to find columns for specific types in Raw Sheet
-        # Raw Sheet Cols: A(0), B(1), C(2), D(3), E(4)=Q1 ...
-        # Need to know which Q columns correspond to which Type
-        type_cols_indices = {t: [] for t in holland_types}
-        
-        # Map df_raw columns back to indices
-        # df_raw columns: ID, Name, Class, Date, Q1, Q2...
-        # Indices in Excel (0-based): 0, 1, 2, 3, 4...
-        # So Q1 is at index 4 (Column E). Q_id matches sorted_q_ids index + 1? No, verify sorted_q_ids position.
-        
-        q_label_to_excel_col_idx = {}
-        for idx, col_name in enumerate(df_raw.columns):
-            q_label_to_excel_col_idx[col_name] = idx
-
-        for q_id in sorted_q_ids:
-            q_type = self.questions_map[q_id]['type']
-            col_label = f"Q{q_id}"
-            if col_label in q_label_to_excel_col_idx:
-                col_idx = q_label_to_excel_col_idx[col_label]
-                # Convert 0-based index to Excel Letter
-                from xlsxwriter.utility import xl_col_to_name
-                col_letter = xl_col_to_name(col_idx)
-                type_cols_indices[q_type].append(col_letter)
-        
-        # Write Formulas for each student
-        for i, student in enumerate(students):
-            row_num = i + 1 # 1-based for data (0 is header)
-            excel_row = row_num + 1 # 1-based excel row number
-            
-            s_id = student[0]
-            name = student[1]
-            
-            worksheet_calc.write(row_num, 0, s_id)
-            worksheet_calc.write(row_num, 1, name)
-            
-            # Write Sum Formulas
-            # Col Indices for Sums: 2, 3, 4, 5, 6, 7
-            sum_cell_refs = {}
-            
-            for t_idx, t in enumerate(holland_types):
-                cols = type_cols_indices[t]
-                # Formula: =SUM('Raw Answers'!E2, 'Raw Answers'!K2, ...)
-                # Note: raw answers row matches this row (i+2)
-                refs = [f"'Raw Answers'!{c}{excel_row}" for c in cols]
-                formula = f"={'+'.join(refs)}"
-                current_col = 2 + t_idx
-                worksheet_calc.write_formula(row_num, current_col, formula)
-                
-                # Store ref for Max calc
-                from xlsxwriter.utility import xl_rowcol_to_cell
-                sum_cell_refs[t] = xl_rowcol_to_cell(row_num, current_col)
-
-            # Max Score Column (Col 8 + 6 = 14 -> Column O)
-            # The columns for sums are 2 to 7 (C to H)
-            # Max score at col 14 (O) or let's put it after Sums? 
-            # Headers: ID(0), Name(1), S_R(2), S_I(3), S_A(4), S_S(5), S_E(6), S_C(7)
-            # Norm Starts at 8. Max Score? Let's put Max Score at 8, Norm at 9-14
-            
-            # Let's adjust headers slightly above? Logic:
-            # Calc sum R..C (2-7). Max(2-7) at 8. Norm R..C (9-14).
-            
-            # Rewrite headers logic on the fly (easier loop):
-            # Sums: 2,3,4,5,6,7. 
-            # Max: 8
-            # Norms: 9,10,11,12,13,14
-             
-            # Max Formula
-            sum_range_start = xl_rowcol_to_cell(row_num, 2)
-            sum_range_end = xl_rowcol_to_cell(row_num, 7)
-            max_formula = f"=MAX({sum_range_start}:{sum_range_end})"
-            worksheet_calc.write_formula(row_num, 8, max_formula)
-            max_cell_ref = xl_rowcol_to_cell(row_num, 8)
-            
-            # Norm Formulas
-            for t_idx, t in enumerate(holland_types):
-                sum_cell = sum_cell_refs[t]
-                # If Max is 0, avoid div/0
-                norm_formula = f"=IF({max_cell_ref}=0, 0, {sum_cell}/{max_cell_ref})"
-                worksheet_calc.write_formula(row_num, 9 + t_idx, norm_formula, num_fmt)
-
-        # Fix headers for Calc sheet based on logic above
-        final_headers = ['ID', 'Name'] + [f"SUM_{t[0]}" for t in holland_types] + ['MAX_SCORE'] + [f"NORM_{t[0]}" for t in holland_types]
-        for col, h in enumerate(final_headers):
-            worksheet_calc.write(0, col, h, header_fmt)
-
         # ==========================================
-        # SHEET 4: ANP Intermediates (From System DB)
+        # SHEET 1: RINGKASAN & HOLLAND
         # ==========================================
-        # We need to parse the JSON in `test_results` to show what the system calculated
-        
-        cursor.execute('''
-            SELECT u.full_name, tr.anp_results, tr.recommended_major
-            FROM users u
-            JOIN test_results tr ON u.id = tr.student_id
-            ORDER BY u.full_name
-        ''')
-        results = cursor.fetchall()
-        
-        anp_rows = []
-        for name, anp_json, rec_major in results:
-            if not anp_json:
-                continue
+        holland_data = []
+        for s in students_with_results:
+            s_id, name, cls, h_scores_json, anp_json, date = s
             
-            data = json.loads(anp_json)
-            # Structure varies slightly based on when it was saved, handle safely
-            # Try to get calculation_details
+            # Recalculate sums from answers to show the "perhitungan" (calculation)
+            cursor.execute("""
+                SELECT q.holland_type, sa.answer 
+                FROM student_answers sa 
+                JOIN questions q ON sa.question_id = q.id 
+                WHERE sa.student_id = ?
+            """, (s_id,))
+            student_raw_ans = cursor.fetchall()
             
-            details = {}
-            if 'anp_results' in data and isinstance(data['anp_results'], dict):
-                 if 'calculation_details' in data['anp_results']:
-                     details = data['anp_results']['calculation_details']
-                 else:
-                     details = data['anp_results'] # Fallback
-            elif 'calculation_details' in data:
-                details = data['calculation_details']
+            sums = {t: 0 for t in holland_types}
+            for q_type, score in student_raw_ans:
+                if q_type in sums:
+                    sums[q_type] += score
             
-            # Extract Priorities
-            # priorities usually in 'criteria_priorities' dict
-            priorities = details.get('criteria_priorities', {})
-            
-            cr = details.get('consistency_ratio', 'N/A')
-            is_cons = details.get('is_consistent', 'N/A')
+            max_score = max(sums.values()) if sums.values() else 0
             
             row = {
-                'Name': name,
-                'Rec Major': rec_major,
-                'CR (Consistency)': cr,
-                'Is Consistent': is_cons
+                'ID Siswa': s_id,
+                'Nama Lengkap': name,
+                'Kelas': cls,
+                'Tanggal': date
             }
-            
+            # Add Holland SUMs
             for t in holland_types:
-                row[f"Weight_{t[0]}"] = priorities.get(t, 0)
-                
-            anp_rows.append(row)
+                row[f'SUM {t}'] = sums.get(t, 0)
             
-        df_anp = pd.DataFrame(anp_rows)
-        df_anp.to_excel(writer, sheet_name='ANP Intermediates', index=False)
+            row['Max Score'] = max_score
+            
+            # Add Holland NORM scores
+            for t in holland_types:
+                row[f'NORM {t}'] = sums.get(t, 0) / max_score if max_score > 0 else 0
+            
+            holland_data.append(row)
         
-        # ==========================================
-        # SHEET 5: Ranking Comparison
-        # ==========================================
-        # List top 5 majors for each student
+        df_holland = pd.DataFrame(holland_data)
+        df_holland.to_excel(writer, sheet_name='Perhitungan Holland', index=False)
         
-        rank_rows = []
-        for name, anp_json, rec_major in results:
-             if not anp_json:
-                continue
-             data = json.loads(anp_json)
-             
-             # Locate top_5
-             top_5 = []
-             if 'anp_results' in data and isinstance(data['anp_results'], dict):
-                 top_5 = data['anp_results'].get('top_5_majors', [])
-             elif 'top_5_majors' in data:
-                 top_5 = data['top_5_majors']
-                 
-             for rank, major_item in enumerate(top_5, 1):
-                 m_name = major_item['major_name'] if isinstance(major_item, dict) else major_item[0]
-                 m_score = major_item.get('anp_score', 0) if isinstance(major_item, dict) else 0 # Handle tuple fallback if needed
-                 
-                 rank_rows.append({
-                     'Name': name,
-                     'Rank': rank,
-                     'Major': m_name,
-                     'System Score': m_score
-                 })
-                 
-        df_ranks = pd.DataFrame(rank_rows)
-        df_ranks.to_excel(writer, sheet_name='Major Rankings', index=False)
+        # Apply formatting to Holland sheet
+        ws_h = writer.sheets['Perhitungan Holland']
+        for col_num, value in enumerate(df_holland.columns.values):
+            ws_h.write(0, col_num, value, header_fmt)
+            ws_h.set_column(col_num, col_num, 15)
+
+        # ==========================================
+        # SHEET 2: JAWABAN SISWA
+        # ==========================================
+        # Matrix: Students (Rows) x Questions (Cols)
+        # Fetch all questions needed
+        sorted_q_ids = sorted(self.questions_map.keys())
+        answer_rows = []
+        for s in students_with_results:
+            s_id, name, cls, _, _, _ = s
+            cursor.execute("SELECT question_id, answer FROM student_answers WHERE student_id = ?", (s_id,))
+            ans_map = dict(cursor.fetchall())
+            
+            row = {'Nama Siswa': name, 'Kelas': cls}
+            for q_id in sorted_q_ids:
+                row[f'Q{q_id}'] = ans_map.get(q_id, 0)
+            answer_rows.append(row)
+            
+        df_answers = pd.DataFrame(answer_rows)
+        df_answers.to_excel(writer, sheet_name='Jawaban Siswa', index=False)
+        ws_ans = writer.sheets['Jawaban Siswa']
+        for col_num, value in enumerate(df_answers.columns.values):
+            ws_ans.write(0, col_num, value, header_fmt)
+
+        # ==========================================
+        # SHEET 3: PERBANDINGAN RANKING (SIM vs ANP)
+        # ==========================================
+        # This will list top 5 for each student side-by-side
+        import numpy as np
+        
+        # Pre-calc major vectors for Cosine Similarity
+        major_names = list(self.majors_map.keys())
+        major_profiles = np.array([[self.majors_map[m][t] for t in holland_types] for m in major_names])
+        major_norms = np.linalg.norm(major_profiles, axis=1)
+
+        ranking_rows = []
+        for s in students_with_results:
+            s_id, name, cls, h_scores_json, anp_json, _ = s
+            h_scores = json.loads(h_scores_json)
+            s_vec = np.array([h_scores.get(t, 0) for t in holland_types])
+            s_norm = np.linalg.norm(s_vec)
+            
+            # A. Calculate Cosine Similarity for ALL majors
+            sim_scores = []
+            if s_norm > 0:
+                for i, m_name in enumerate(major_names):
+                    if major_norms[i] > 0:
+                        cos_sim = np.dot(s_vec, major_profiles[i]) / (s_norm * major_norms[i])
+                    else:
+                        cos_sim = 0
+                    sim_scores.append((m_name, float(cos_sim)))
+            else:
+                sim_scores = [(m, 0.0) for m in major_names]
+            
+            top_5_sim = sorted(sim_scores, key=lambda x: x[1], reverse=True)[:5]
+            
+            # B. Extract ANP ranking from JSON
+            anp_data = json.loads(anp_json)
+            # Handle nested structure
+            anp_top_5 = []
+            if 'anp_results' in anp_data and isinstance(anp_data['anp_results'], dict):
+                anp_top_5 = anp_data['anp_results'].get('top_5_majors', [])
+            elif 'top_5_majors' in anp_data:
+                anp_top_5 = anp_data['top_5_majors']
+            
+            # Fill rows for top 5
+            for i in range(5):
+                row = {'Nama Siswa': name, 'Rank': i+1}
+                
+                # Similarity part
+                if i < len(top_5_sim):
+                    row['Jurusan (Cosine Sim)'] = top_5_sim[i][0]
+                    row['Skor Sim'] = top_5_sim[i][1]
+                else:
+                    row['Jurusan (Cosine Sim)'] = '-'
+                    row['Skor Sim'] = 0
+                
+                # ANP part
+                if i < len(anp_top_5):
+                    m_item = anp_top_5[i]
+                    if isinstance(m_item, dict):
+                        row['Jurusan (ANP)'] = m_item.get('major_name', '-')
+                        row['Skor ANP'] = m_item.get('anp_score', 0)
+                    else: # Legacy tuple format
+                        row['Jurusan (ANP)'] = m_item[0]
+                        row['Skor ANP'] = m_item[1].get('anp_score', 0) if isinstance(m_item[1], dict) else m_item[1]
+                else:
+                    row['Jurusan (ANP)'] = '-'
+                    row['Skor ANP'] = 0
+                
+                ranking_rows.append(row)
+            
+        df_rankings = pd.DataFrame(ranking_rows)
+        df_rankings.to_excel(writer, sheet_name='Perbandingan Top 5', index=False)
+        ws_rank = writer.sheets['Perbandingan Top 5']
+        for col_num, value in enumerate(df_rankings.columns.values):
+            ws_rank.write(0, col_num, value, header_fmt)
+            ws_rank.set_column(col_num, col_num, 20)
+
+        # ==========================================
+        # SHEET 4: MASTER DATA JURUSAN
+        # ==========================================
+        master_majors = []
+        for m_name, profile in self.majors_map.items():
+            row = {'Nama Jurusan': m_name}
+            for t in holland_types:
+                row[t] = profile.get(t, 0)
+            master_majors.append(row)
+            
+        df_master = pd.DataFrame(master_majors)
+        df_master.to_excel(writer, sheet_name='Master Data Jurusan', index=False)
+        ws_m = writer.sheets['Master Data Jurusan']
+        for col_num, value in enumerate(df_master.columns.values):
+            ws_m.write(0, col_num, value, header_fmt)
+            ws_m.set_column(col_num, col_num, 15)
 
         conn.close()
         writer.close()

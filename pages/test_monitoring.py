@@ -27,6 +27,24 @@ conn = connection()
 # Page header
 page_header("Monitoring Hasil Tes", "Lihat dan analisis hasil tes siswa")
 
+# Button Download Laporan (NEW)
+from services.export_manager import ExportManager
+st.markdown("### 📥 Laporan Hasil")
+col_exp, _ = st.columns([1, 2])
+with col_exp:
+    try:
+        export_mgr = ExportManager()
+        excel_data = export_mgr.generate_full_admin_report()
+        st.download_button(
+            label="📊 Download Laporan Lengkap (Excel)",
+            data=excel_data,
+            file_name=f"Laporan_Hasil_Tes_Lengkap_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+    except Exception as e:
+        st.error(f"Gagal menyiapkan laporan: {e}")
+
 cursor = conn.cursor()
 
 # Ambil data hasil tes

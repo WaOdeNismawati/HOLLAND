@@ -474,11 +474,18 @@ def save_csv_to_db_student_answers(uploaded_file):
         conn = db.get_connection()
         cursor = conn.cursor()
         _reset_sequence_if_table_empty(conn, "student_answers")
+        # If username provided, map to student_id
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        _reset_sequence_if_table_empty(conn, "student_answers")
         if not use_student_id:
-            st.info("🔄 Mengonversi username -> student_id ...")
+            st.info("🔄 Mengonversi username -> student_id (case-insensitive) ...")
             cursor.execute("SELECT id, username FROM users WHERE role = 'student'")
-            username_map = {row[1]: row[0] for row in cursor.fetchall()}  # username -> id
-            df["student_id"] = df["username"].map(username_map)
+            # Use lower() for both to ensure case-insensitive match
+            username_map = {row[1].lower(): row[0] for row in cursor.fetchall()}  # username.lower() -> id
+            
+            df["student_id"] = df["username"].apply(lambda x: username_map.get(str(x).lower()) if pd.notna(x) else None)
+            
             missing_usernames = df[df["student_id"].isna()]["username"].unique()
             if len(missing_usernames) > 0:
                 st.warning(f"⚠️ Username tidak ditemukan: {', '.join(map(str, missing_usernames))}")
@@ -524,13 +531,18 @@ def save_csv_to_db_student_answers(uploaded_file):
         progress_bar = st.progress(0)
         status_text = st.empty()
 
+        # Track students whose results should be recalculated
+        affected_student_ids = set()
+
         # Insert/update rows
         cursor.execute("BEGIN")
         for idx, row in df.iterrows():
             try:
-                sid = row["student_id"]
-                qid = row["question_id"]
+                sid = int(row["student_id"])
+                qid = int(row["question_id"])
                 ans = int(row["answer"])
+                
+                affected_student_ids.add(sid)
 
                 # check existing
                 cursor.execute("""
@@ -561,6 +573,18 @@ def save_csv_to_db_student_answers(uploaded_file):
                 status_text.text(f"Memproses: {idx + 1}/{total_rows} baris...")
 
         conn.commit()
+        
+        # --- Automatic Recalculation ---
+        if affected_student_ids:
+            st.info(f"🔄 Menghitung ulang hasil untuk {len(affected_student_ids)} siswa...")
+            from utils.holland_calculator import HollandCalculator
+            calculator = HollandCalculator()
+            for sid in affected_student_ids:
+                try:
+                    calculator.process_test_completion(sid)
+                except Exception as e:
+                    print(f"Error recalculating for student {sid}: {e}")
+
         progress_bar.empty()
         status_text.empty()
         conn.close()

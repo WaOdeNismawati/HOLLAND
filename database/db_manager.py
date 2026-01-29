@@ -44,19 +44,6 @@ class DatabaseManager:
                 VALUES (?, ?, ?, ?)
             ''', ("admin", admin_password, "admin", "Administrator"))
 
-        # ---------- SAMPLE STUDENT ----------
-        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'student'")
-        student_count = cursor.fetchone()[0]
-
-        if student_count == 0:
-            student_password = bcrypt.hashpw("student123".encode('utf-8'), bcrypt.gensalt()).decode()
-
-            cursor.execute('''
-                INSERT OR IGNORE INTO users (username, password, role, full_name, class_name)
-                VALUES (?, ?, ?, ?, ?)
-            ''', ("student1", student_password, "student", "Siswa Contoh", "XII IPA 1"))
-
-
 
     # ==============================
     #  SCHEMA MANAGEMENT

@@ -31,6 +31,13 @@ def main():
         redirect_to_dashboard()
 
 
+def redirect_to_dashboard():
+    if st.session_state.role == 'admin':
+        st.switch_page("pages/admin_dashboard.py")
+    else:
+        st.switch_page("pages/student_dashboard.py")
+
+
 def show_login_page():
     # Centered login container with High-Fidelity CSS
     st.markdown("""
@@ -77,7 +84,7 @@ def show_login_page():
                 0 0 100px -20px rgba(59, 130, 246, 0.3);
             text-align: center;
         }
-        .login-title {
+        .login-title {s
             color: #0f172a;
             font-size: 1.5rem;
             font-weight: 700;
@@ -235,14 +242,6 @@ def show_login_page():
                         st.error("Username atau password salah!")
                 else:
                     st.warning("Mohon isi semua field!")
-
-
-def redirect_to_dashboard():
-    if st.session_state.role == 'admin':
-        st.switch_page("pages/admin_dashboard.py")
-    else:
-        st.switch_page("pages/student_dashboard.py")
-
 
 if __name__ == "__main__":
     main()
