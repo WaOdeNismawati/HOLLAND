@@ -6,3 +6,5 @@ plotly
 bcrypt
 scipy
 streamlit-tz
+xlsxwriter
+extra-streamlit-components

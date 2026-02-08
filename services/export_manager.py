@@ -76,20 +76,34 @@ class ExportManager:
         holland_types = ['Realistic', 'Investigative', 'Artistic', 'Social', 'Enterprising', 'Conventional']
         
         # ==========================================
+        # OPTIMIZED: Batch fetch all student answers ONCE
+        # instead of N+1 queries per student
+        # ==========================================
+        cursor.execute("""
+            SELECT sa.student_id, q.holland_type, sa.answer, sa.question_id
+            FROM student_answers sa
+            JOIN questions q ON sa.question_id = q.id
+        """)
+        all_answers_raw = cursor.fetchall()
+        
+        # Group answers by student_id
+        from collections import defaultdict
+        answers_by_student = defaultdict(list)
+        answers_by_student_qid = defaultdict(dict)  # For answer_rows sheet
+        
+        for student_id, holland_type, answer, q_id in all_answers_raw:
+            answers_by_student[student_id].append((holland_type, answer))
+            answers_by_student_qid[student_id][q_id] = answer
+        
+        # ==========================================
         # SHEET 1: RINGKASAN & HOLLAND
         # ==========================================
         holland_data = []
         for s in students_with_results:
             s_id, name, cls, h_scores_json, anp_json, date = s
             
-            # Recalculate sums from answers to show the "perhitungan" (calculation)
-            cursor.execute("""
-                SELECT q.holland_type, sa.answer 
-                FROM student_answers sa 
-                JOIN questions q ON sa.question_id = q.id 
-                WHERE sa.student_id = ?
-            """, (s_id,))
-            student_raw_ans = cursor.fetchall()
+            # Use pre-fetched data instead of per-student query
+            student_raw_ans = answers_by_student.get(s_id, [])
             
             sums = {t: 0 for t in holland_types}
             for q_type, score in student_raw_ans:
@@ -129,13 +143,12 @@ class ExportManager:
         # SHEET 2: JAWABAN SISWA
         # ==========================================
         # Matrix: Students (Rows) x Questions (Cols)
-        # Fetch all questions needed
+        # Use pre-fetched answers instead of per-student query
         sorted_q_ids = sorted(self.questions_map.keys())
         answer_rows = []
         for s in students_with_results:
             s_id, name, cls, _, _, _ = s
-            cursor.execute("SELECT question_id, answer FROM student_answers WHERE student_id = ?", (s_id,))
-            ans_map = dict(cursor.fetchall())
+            ans_map = answers_by_student_qid.get(s_id, {})
             
             row = {'Nama Siswa': name, 'Kelas': cls}
             for q_id in sorted_q_ids:
@@ -147,6 +160,7 @@ class ExportManager:
         ws_ans = writer.sheets['Jawaban Siswa']
         for col_num, value in enumerate(df_answers.columns.values):
             ws_ans.write(0, col_num, value, header_fmt)
+
 
         # ==========================================
         # SHEET 3: PERBANDINGAN RANKING (SIM vs ANP)

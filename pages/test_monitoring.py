@@ -8,6 +8,25 @@ from utils.config import connection
 from utils.styles import apply_dark_theme, render_sidebar, page_header
 from datetime import datetime, date
 
+# ==========================================
+# OPTIMIZED: Cached query function
+# ==========================================
+@st.cache_data(ttl=300)  # Cache selama 5 menit
+def get_test_results():
+    """Fetch test results with caching to avoid repeated queries"""
+    conn = connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT u.full_name, u.class_name, tr.top_3_types, tr.recommended_major,
+               tr.holland_scores, tr.completed_at, tr.anp_results, tr.student_id
+        FROM test_results tr
+        JOIN users u ON tr.student_id = u.id
+        ORDER BY tr.completed_at DESC
+    ''')
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
 # Page config
 st.set_page_config(page_title="Monitoring Hasil Tes", page_icon="📊", layout="wide")
 apply_dark_theme()
@@ -21,42 +40,53 @@ if st.session_state.get("role") != 'admin':
 # Sidebar
 render_sidebar(current_page="test_monitoring")
 
-# Database connection
+# Database connection (for detail queries later)
 conn = connection()
 
 # Page header
 page_header("Monitoring Hasil Tes", "Lihat dan analisis hasil tes siswa")
 
-# Button Download Laporan (NEW)
+# Button Download Laporan (OPTIMIZED: Lazy Loading)
 from services.export_manager import ExportManager
 st.markdown("### 📥 Laporan Hasil")
 col_exp, _ = st.columns([1, 2])
 with col_exp:
-    try:
-        export_mgr = ExportManager()
-        excel_data = export_mgr.generate_full_admin_report()
+    # Lazy loading: hanya generate Excel saat tombol diklik
+    if 'excel_report' not in st.session_state:
+        st.session_state['excel_report'] = None
+    if 'excel_ready' not in st.session_state:
+        st.session_state['excel_ready'] = False
+    
+    if not st.session_state['excel_ready']:
+        if st.button("📊 Siapkan Laporan Lengkap (Excel)", use_container_width=True):
+            try:
+                with st.spinner("Menyiapkan laporan... (ini mungkin memakan waktu)"):
+                    export_mgr = ExportManager()
+                    excel_data = export_mgr.generate_full_admin_report()
+                    st.session_state['excel_report'] = excel_data
+                    st.session_state['excel_ready'] = True
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Gagal menyiapkan laporan: {e}")
+    else:
         st.download_button(
-            label="📊 Download Laporan Lengkap (Excel)",
-            data=excel_data,
+            label="⬇️ Download Laporan Lengkap (Siap!)",
+            data=st.session_state['excel_report'],
             file_name=f"Laporan_Hasil_Tes_Lengkap_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
-    except Exception as e:
-        st.error(f"Gagal menyiapkan laporan: {e}")
+        if st.button("🔄 Reset", use_container_width=True):
+            st.session_state['excel_ready'] = False
+            st.session_state['excel_report'] = None
+            st.rerun()
+
 
 cursor = conn.cursor()
 
-# Ambil data hasil tes
-cursor.execute('''
-    SELECT u.full_name, u.class_name, tr.top_3_types, tr.recommended_major,
-           tr.holland_scores, tr.completed_at, tr.anp_results, tr.student_id
-    FROM test_results tr
-    JOIN users u ON tr.student_id = u.id
-    ORDER BY tr.completed_at DESC
-''')
+# Ambil data hasil tes (OPTIMIZED: menggunakan cached function)
+raw_results = get_test_results()
 
-raw_results = cursor.fetchall()
 
 if not raw_results:
     st.info("Belum ada siswa yang menyelesaikan tes.")
