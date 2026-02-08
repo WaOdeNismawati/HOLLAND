@@ -336,5 +336,33 @@ if results_data:
             st.plotly_chart(fig_student, use_container_width=True)
         else:
             st.info("Skor Holland tidak tersedia untuk siswa ini.")
+
+        # --- NEW: Riwayat Jawaban Siswa ---
+        st.markdown("---")
+        st.subheader("📝 Riwayat Jawaban Per Butir Soal")
+        
+        student_id = student_data.get('student_id')
+        if student_id:
+            cursor.execute('''
+                SELECT q.id, q.question_text, q.holland_type, sa.answer
+                FROM student_answers sa
+                JOIN questions q ON sa.question_id = q.id
+                WHERE sa.student_id = ?
+                ORDER BY q.id
+            ''', (student_id,))
+            answers_detail = cursor.fetchall()
+            
+            if answers_detail:
+                df_answers = pd.DataFrame(answers_detail, columns=['ID', 'Pertanyaan', 'Tipe', 'Jawaban'])
+                
+                st.dataframe(df_answers, use_container_width=True, hide_index=True)
+                
+                # RIASEC Summary
+                st.write("**Ringkasan Jawaban per Tipe RIASEC:**")
+                summary_data = df_answers.groupby('Tipe')['Jawaban'].agg(['count', 'mean', 'sum']).reset_index()
+                summary_data.columns = ['Tipe', 'Jumlah Soal', 'Rata-rata Skor', 'Total Skor']
+                st.table(summary_data)
+            else:
+                st.info("Tidak ada data rincian jawaban untuk siswa ini.")
             
 conn.close()

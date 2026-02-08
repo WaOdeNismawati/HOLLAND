@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import json
 from database.db_manager import DatabaseManager
-from utils.auth import check_login
+from utils.auth import check_login, logout
 from utils.config import connection
 from utils.styles import apply_dark_theme, render_sidebar, page_header
 

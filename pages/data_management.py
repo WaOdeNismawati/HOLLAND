@@ -12,6 +12,7 @@ apply_dark_theme()
 from components.upload_csv import (
     upload_csv_student_page,
     upload_csv_soal_page,
+    upload_csv_majors_page,
 )
 
 
@@ -306,7 +307,7 @@ with tab2:
 with tab3:
     st.subheader("📚 Manajemen Data Alternatif (Jurusan)")
 
-    # upload_csv_majors_page() - Removed feature
+    upload_csv_majors_page()
 
     with st.expander("➕ Tambah Alternatif", expanded=False):
         with st.form("form_add_major"):

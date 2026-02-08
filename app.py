@@ -3,6 +3,8 @@ from streamlit_tz import streamlit_tz
 from database.db_manager import DatabaseManager
 from utils.auth import authenticate_user
 from utils.styles import apply_dark_theme
+import extra_streamlit_components as stx
+import datetime
 
 # Konfigurasi halaman
 st.set_page_config(
@@ -21,12 +23,45 @@ db_manager.init_database()
 
 
 def main():
-    # Cek status login
+    # Initialize Cookie Manager
+    cookie_manager = stx.CookieManager(key="persistent_login")
+    
+    # Inisialisasi session state
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
-    
+    if 'cookie_checked' not in st.session_state:
+        st.session_state.cookie_checked = False
+
+    # Jika belum login, cek cookies
+    if not st.session_state.logged_in and not st.session_state.cookie_checked:
+        cookies = cookie_manager.get_all()
+        
+        # Jika cookies masih None/kosong di frame pertama, kita tunggu sebentar
+        if cookies is not None:
+            user_id_cookie = cookies.get('user_id')
+            if user_id_cookie:
+                db_manager = DatabaseManager()
+                conn = db_manager.get_connection()
+                cursor = conn.cursor()
+                cursor.execute('SELECT id, username, role, full_name, class_name FROM users WHERE id = ?', (user_id_cookie,))
+                user = cursor.fetchone()
+                conn.close()
+                
+                if user:
+                    st.session_state.logged_in = True
+                    st.session_state.user_id = user[0]
+                    st.session_state.username = user[1]
+                    st.session_state.role = user[2]
+                    st.session_state.full_name = user[3]
+                    st.session_state.class_name = user[4] if user[4] else ""
+                    st.session_state.timezone = 'Asia/Jakarta'
+                    st.rerun()
+            
+            # Tandai bahwa kita sudah cek cookie (walaupun kosong) agar tidak loop
+            st.session_state.cookie_checked = True
+
     if not st.session_state.logged_in:
-        show_login_page()
+        show_login_page(cookie_manager)
     else:
         redirect_to_dashboard()
 
@@ -38,7 +73,7 @@ def redirect_to_dashboard():
         st.switch_page("pages/student_dashboard.py")
 
 
-def show_login_page():
+def show_login_page(cookie_manager):
     # Centered login container with High-Fidelity CSS
     st.markdown("""
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -235,6 +270,10 @@ def show_login_page():
                         st.session_state.full_name = user[4]
                         st.session_state.class_name = user[5] if user[5] else ""
                         st.session_state.timezone = timezone if timezone else 'Asia/Jakarta'
+                        
+                        # Simpan Cookie untuk Persistensi (berlaku 7 hari)
+                        expires_at = datetime.datetime.now() + datetime.timedelta(days=7)
+                        cookie_manager.set('user_id', str(user[0]), expires_at=expires_at)
                         
                         st.success("Login berhasil!")
                         st.rerun()

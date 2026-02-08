@@ -105,9 +105,11 @@ class ANPProcessor:
         size = n_c + n_a
         S = np.zeros((size, size))
 
-        # W11: Feedback/Influence (Diagonal diisi bobot kriteria)
-        for i in range(n_c):
-            S[i,i] = criteria_weights[i]
+        # W11: Inner Dependency (Feedback/Influence antar kriteria)
+        # Menggunakan matriks korelasi Holland Hexagon dikalikan bobot kriteria
+        for j in range(n_c):
+            for i in range(n_c):
+                S[i, j] = self.holland_correlation[i, j] * criteria_weights[i]
 
         # W21: Alternatif terhadap Kriteria
         for j, crit in enumerate(self.riasec_types):
@@ -120,7 +122,7 @@ class ANPProcessor:
             for i in range(n_c):
                 S[i, n_c+j] = criteria_weights[i]
 
-        # Normalisasi kolom
+        # Normalisasi kolom agar stochastic
         for j in range(size):
             col_sum = S[:,j].sum()
             if col_sum > 0:

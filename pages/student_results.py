@@ -232,8 +232,8 @@ if anp_results and isinstance(anp_results, dict):
         with col3:
             st.metric(
                 "Metode",
-                "Hybrid ANP",
-                help="ANP + Weighted Score + Cosine Similarity"
+                "Pure ANP",
+                help="ANP dengan Inner Dependency (Holland Hexagon)"
             )
         
         st.markdown("---")

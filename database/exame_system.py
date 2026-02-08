@@ -7,6 +7,34 @@ import sys
 import bcrypt
 
 
+# --- Konstanta Data Seed ---
+holland_questions = [
+    ("Saya suka bekerja dengan alat dan mesin", "Realistic"),
+    ("Saya suka melakukan eksperimen ilmiah", "Investigative"),
+    ("Saya suka melukis atau menggambar", "Artistic"),
+    ("Saya suka membantu orang lain memecahkan masalah mereka", "Social"),
+    ("Saya suka memimpin tim untuk mencapai tujuan", "Enterprising"),
+    ("Saya suka menyusun file dan dokumen secara teratur", "Conventional"),
+    ("Saya lebih suka aktivitas fisik di luar ruangan", "Realistic"),
+    ("Saya suka meneliti cara kerja sesuatu", "Investigative"),
+    ("Saya suka menulis cerita atau puisi", "Artistic"),
+    ("Saya suka mengajar orang lain", "Social"),
+    ("Saya suka membujuk orang untuk membeli sesuatu", "Enterprising"),
+    ("Saya suka bekerja dengan angka dan data", "Conventional")
+]
+
+majors_seed = [
+    ("Teknik Informatika", 0.6, 0.9, 0.4, 0.3, 0.5, 0.7),
+    ("Kedokteran", 0.5, 0.9, 0.3, 0.7, 0.4, 0.6),
+    ("Desain Komunikasi Visual", 0.3, 0.4, 0.9, 0.4, 0.6, 0.3),
+    ("Psikologi", 0.2, 0.6, 0.4, 0.9, 0.5, 0.4),
+    ("Manajemen", 0.3, 0.4, 0.4, 0.6, 0.9, 0.7),
+    ("Akuntansi", 0.2, 0.4, 0.2, 0.3, 0.6, 0.9),
+    ("Teknik Mesin", 0.9, 0.7, 0.3, 0.2, 0.4, 0.5),
+    ("Ilmu Komunikasi", 0.3, 0.4, 0.6, 0.8, 0.8, 0.4)
+]
+
+
 class ExamSystemDB:
     def __init__(self, conn_db):
         self.conn = conn_db
